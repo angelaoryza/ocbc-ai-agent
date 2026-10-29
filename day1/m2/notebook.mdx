@@ -1,0 +1,507 @@
+---
+title: "Module 2 notebook: building an automated data retrieval layer"
+description: "Send your first Sectors requests, read a public web page, save the data and handle failures."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 2 (about 45 minutes). After it come the example script
+`day1/examples/m2_example.py` and the exercise `day1/exercises/m2_exercise.py`. Each section uses what the
+previous one produced, so run it from the top.
+
+## Background
+
+The IDX Market Assistant needs data before it can do anything clever. You are an analyst on the desk that
+supports OCBC's relationship managers (RMs), and every morning they ask about the same four banks: **BBCA,
+BBRI, BMRI and NISP**. Your manager gives you one request per section:
+
+- **2.2 How did NISP close yesterday?** One request to the Sectors API, end to end.
+- **2.3 Prices, news and a ranking.** Three more endpoints, with parameters you set yourself.
+- **2.4 Which banks are state-owned?** Not in Sectors, so we read a public web page.
+- **2.5 Keep it for the team.** JSON, CSV, Markdown and SQLite.
+- **2.6 What if Sectors fails at 07:30?** Errors, retries and a saved copy.
+- **2.7 From notebook to script.** What changes when nobody is watching.
+
+### Training objectives
+
+- Build a REST request yourself: path, parameters, the key in a header, a timeout
+- Pull company, price and news data from Sectors, and read an endpoint's documentation to call a new one
+- Read a table from a public web page, after checking `robots.txt`
+- Save data in the format its next reader needs, and query it with SQL
+- Tell an error a retry can fix from one that needs a person, and fall back to a saved copy
+
+### The practice data
+
+| Source | What it gives |
+|---|---|
+| Sectors API, `https://api.sectors.app/v2` | Company reports, daily prices, news and a screener for IDX companies. Needs `SECTORS_API_KEY` in `.env` |
+| Wikipedia, *List of banks in Indonesia* | Indonesian banks with their founding year and majority owner |
+| `data/sample/` | Saved copies of real Sectors answers (25 October 2026), used when a source cannot be reached |
+
+So that everyone gets the same numbers, prices are for one fixed month: **24 September to 23 October 2026**.
+
+```python
+import json
+import requests
+import pandas as pd
+
+START, END = "2026-09-24", "2026-10-23"
+TICKERS = ["BBCA", "BBRI", "BMRI", "NISP"]
+```
+
+## 2.2 How did NISP close yesterday? (one request, end to end)
+
+<Info>
+**The request**
+
+Your manager: **"An RM asks how NISP closed yesterday. Get it from Sectors, not from a website."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What does a request need, and how do we know the answer is good?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** send one request and read the status code before the data; then build one yourself.
+> - **What carries forward:** `BASE_URL` and `headers`, used by every call below.
+
+A Sectors request has four parts (coursebook 2.2):
+
+| Part | Here | Note |
+|---|---|---|
+| Path | `/company/report/NISP/` | after the base URL `https://api.sectors.app/v2` |
+| Parameters | `sections=overview` | `requests` builds the `?...` part from a dict |
+| Header | `Authorization: <key>` | the raw key, **no** `Bearer`; read from `.env`, never printed |
+| Timeout | `timeout=30` | without it, a server that never answers freezes an unattended script |
+
+```python
+BASE_URL = "https://api.sectors.app/v2"
+headers = {"Authorization": os.getenv("SECTORS_API_KEY")}
+print("Key found:", headers["Authorization"] is not None)
+
+response = requests.get(f"{BASE_URL}/company/report/NISP/", headers=headers,
+                        params={"sections": "overview"}, timeout=30)
+print(response.status_code, response.url)
+```
+
+Read the status code **before** the data: 200 means the data is there; 4xx means our request is wrong
+(401/403 key, 404 not found, 400 bad parameter); 429 and 5xx mean try again later. Then `.json()` gives
+dicts and lists:
+
+```python
+nisp_report = response.json()
+overview = nisp_report["overview"]
+print(nisp_report["company_name"], overview["last_close_price"], overview["latest_close_date"])
+```
+
+Always give the RM the **date** with the price: "live" data is the last trading day, not this minute.
+
+### Your turn: A report request of your own
+
+Ask for the report of **BBCA** with the sections `overview` **and** `valuation` in one request (comma-separated).
+Print the status code, the last close with its date, and the keys of `valuation`. The right result is `200`, then
+`5025 2026-10-23` (the close on the last trading day), then keys such as `forward_pe` and `intrinsic_value`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: The header
+
+A colleague's call returns 401, although the key in `.env` is correct. Their code sends
+`headers={"Authorization": "Bearer " + key}`. What is wrong?
+
+- **a.** The key must go in the URL as `?api_key=`
+- **b.** Sectors expects the raw key: drop `Bearer `
+- **c.** The timeout is missing
+- **d.** `/company/report/` needs `sections` or it returns 401
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Reading the status
+
+A scheduled call for ticker `XXXX` returns 404. What should the script conclude?
+
+- **a.** Sectors is down: retry in a minute
+- **b.** The key has expired
+- **c.** The request reached Sectors and was understood, but that ticker does not exist
+- **d.** The answer was too large: lower the limit
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 2.3 Prices, news and a ranking (reading the docs, building the call)
+
+<Info>
+**The request**
+
+Your manager: **"The RMs want last month's prices of the four banks, the latest news about them,
+and the largest banks on the exchange."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we call an endpoint we have not used before?
+> - **How we run it:** **Live for prices, about 12 minutes; then you build the news and ranking calls from the table.**
+> - **What you will do:** read an endpoint's path and parameters, and turn the answer into a DataFrame or a list.
+> - **What carries forward:** `get_sectors` and `nisp_prices`.
+
+Each endpoint is the same request with a different path and parameters. From the Sectors docs:
+
+| Data | Path | Parameters | Answer |
+|---|---|---|---|
+| Daily prices | `/daily/{ticker}/` | `start`, `end` (`YYYY-MM-DD`, at most 90 days) | list of rows |
+| News | `/news/` | `symbols` (comma-separated), `limit` (max 30) | dict; articles in `results` |
+| Screener | `/companies/` | `where` (SQL-like filter), `order_by` (`-` = descending), `limit` | dict; companies in `results` |
+
+Since only the path and parameters change, we write the request once:
+
+```python
+def get_sectors(path, params=None):
+    response = requests.get(BASE_URL + path, headers=headers, params=params, timeout=30)
+    response.raise_for_status()      # 4xx/5xx become an exception instead of a wrong answer
+    return response.json()
+
+
+rows = get_sectors("/daily/NISP/", {"start": START, "end": END})
+nisp_prices = pd.DataFrame(rows)
+print(len(nisp_prices), "trading days")
+nisp_prices.tail(3)
+```
+
+### Your turn: News about two banks
+
+Using the table above, ask for the **10** latest articles that mention **BBCA or BBRI**, in **one** request. Print
+the date (first 10 characters of `timestamp`), the `symbols` field and the first 60 characters of the title of each
+article. The right result is 10 lines, newest first, each mentioning BBCA, BBRI or both.
+
+```python
+## Your code below
+```
+
+### Your turn: The largest banks
+
+Use the screener to list the **5 largest banks by market cap**: filter with `where` on `sub_sector='banks'`, sort
+with `order_by` on `-market_cap`, and add `"include_query_values": "true"` so the answer contains the market cap.
+Show the result as a DataFrame of symbol and company name. The right result starts with `BBCA.JK`, `BBRI.JK`, `BMRI.JK`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Building a request
+
+You need NISP's prices for the first week of October 2026. Which call is right?
+
+- **a.** `get_sectors("/daily/NISP/", {"start": "2026-10-01", "end": "2026-10-07"})`
+- **b.** `get_sectors("/daily/NISP/2026-10-01/2026-10-07/")`
+- **c.** `get_sectors("/daily/", {"ticker": "NISP", "days": 7})`
+- **d.** `get_sectors("/daily/NISP/", {"start": "01-10-2026", "end": "07-10-2026"})`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: The 90-day limit
+
+A script asks `/daily/NISP/` for one full year in one call. What should you expect?
+
+- **a.** One year of rows
+- **b.** An error 413
+- **c.** At most 90 days of rows: ask in chunks of 90 days or fewer
+- **d.** The rows of the first 90 days of the year only
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 2.4 Which banks are state-owned? (a public web page)
+
+<Info>
+**The request**
+
+Your manager: **"Sectors does not say which banks are state-owned, but Wikipedia does."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we take a table from a web page, responsibly?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** check `robots.txt` with our own User-Agent, download the page, and turn a table into a DataFrame.
+> - **What carries forward:** `state_banks`, saved in 2.5.
+
+```python
+from urllib.robotparser import RobotFileParser
+from bs4 import BeautifulSoup
+
+PAGE_URL = "https://en.wikipedia.org/wiki/List_of_banks_in_Indonesia"
+USER_AGENT = {"User-Agent": "OCBC-AI-Masterclass/1.0"}   # Wikipedia blocks Python's default one
+
+try:
+    robots = RobotFileParser()
+    robots.parse(requests.get("https://en.wikipedia.org/robots.txt", headers=USER_AGENT, timeout=30).text.splitlines())
+    print("Allowed:", robots.can_fetch(USER_AGENT["User-Agent"], PAGE_URL))
+    html = requests.get(PAGE_URL, headers=USER_AGENT, timeout=30).text
+except requests.exceptions.ConnectionError:            # Wikipedia sometimes drops connections
+    print("⚠️ Wikipedia unreachable: using the saved copy of the page")
+    html = open("data/sample/list_of_banks_in_indonesia.html", encoding="utf-8").read()
+
+tables = BeautifulSoup(html, "html.parser").find_all("table", class_="wikitable")
+print(len(tables), "tables")
+```
+
+Real HTML is irregular: header rows have `<th>` and no `<td>`, sub-heading rows have one cell, and some banks
+share the "Majority owner" cell of the row above (`rowspan`), so their row has only two cells:
+
+```python
+def table_to_df(table):
+    rows = []
+    for tr in table.find_all("tr"):
+        cells = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
+        if len(cells) >= 2:                                   # skip header and sub-heading rows
+            rows.append([cells[0], cells[1], cells[2] if len(cells) > 2 else ""])
+    return pd.DataFrame(rows, columns=["name", "founded", "majority_owner"])
+
+
+state_banks = table_to_df(tables[0])
+state_banks
+```
+
+### Your turn: Find the table yourself
+
+Do not rely on the table's position: pages change. Find the table that comes right after the heading that contains
+**"Regional"** (search the heading tags `h2`, `h3` and `h4`, then use `.find_next("table")`), turn it into a DataFrame with `table_to_df`
+and print the number of banks. The right result is `24` (the live page can change).
+
+```python
+## Your code below
+```
+
+### Knowledge check: Scraping responsibly
+
+Which statement about scraping the Wikipedia page is right?
+
+- **a.** `robots.txt` is only a suggestion, so checking it is optional
+- **b.** We check `robots.txt` for our User-Agent, identify ourselves, and keep a saved copy so we do not download the page on every run
+- **c.** BeautifulSoup checks `robots.txt` automatically
+- **d.** A paid scraper is needed for any public page
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 2.5 Keep it for the team (structuring and saving)
+
+<Info>
+**The request**
+
+Your manager: **"Module 5 needs the news as JSON, the RMs open CSV in Excel, people read Markdown, and
+we want the price history in one place we can query."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** Which format for which reader, and how do we know the file is right?
+> - **How we run it:** **Live, about 9 minutes.**
+> - **What you will do:** save each format, read it back, and query the prices with SQL.
+> - **What carries forward:** `data/news/<TICKER>.json` (Module 5) and `data/market.db` (Module 3).
+
+| Format | Next reader | Why |
+|---|---|---|
+| JSON | Code (Module 5 reads the news) | keeps nested lists and dicts exactly |
+| CSV | Excel, pandas | flat tables |
+| Markdown | People, and the LLM prompt in Module 4 | headings and lists, little noise |
+| SQLite | Queries across banks and dates | one file, SQL, no server |
+
+**Never trust a file you have not read back.**
+
+```python
+os.makedirs("data/news", exist_ok=True)
+os.makedirs("output", exist_ok=True)
+
+for t in TICKERS:                                                  # Module 5 searches these articles
+    articles = get_sectors("/news/", {"symbols": t, "limit": 20})["results"]
+    with open(f"data/news/{t}.json", "w", encoding="utf-8") as f:
+        json.dump(articles, f, indent=2, ensure_ascii=False)       # keep Indonesian characters
+    with open(f"data/news/{t}.json", encoding="utf-8") as f:
+        assert json.load(f) == articles
+    print(t, len(articles), "articles saved")
+
+state_banks.to_csv("output/state_owned_banks.csv", index=False)
+
+with open("output/profile_NISP.md", "w", encoding="utf-8") as f:
+    f.write(f"## {nisp_report['company_name']}\n\n"
+            f"- Last close: {overview['last_close_price']} on {overview['latest_close_date']}\n"
+            f"- Market cap: IDR {overview['market_cap'] / 1e12:.1f} trillion\n")
+print(open("output/profile_NISP.md", encoding="utf-8").read())
+```
+
+SQLite: `to_sql` writes a DataFrame into a table (`if_exists="replace"` starts again, `"append"` adds rows) and
+`read_sql` returns a query as a DataFrame:
+
+```python
+import sqlite3
+
+conn = sqlite3.connect("data/market.db")
+all_prices = pd.concat([pd.DataFrame(get_sectors(f"/daily/{t}/", {"start": START, "end": END})) for t in TICKERS])
+all_prices.to_sql("daily_prices", conn, if_exists="replace", index=False)
+
+pd.read_sql("SELECT symbol, COUNT(*) AS days, MIN(date) AS first, MAX(date) AS last FROM daily_prices GROUP BY symbol", conn)
+```
+
+### Your turn: Ask the database
+
+Write **one** SQL query that returns, for each bank, the highest close and the lowest close of the month, sorted by
+the size of the range (`MAX(close) - MIN(close)`) from large to small. The right result has 4 rows; the first is
+`BBCA.JK` (6250 and 4820), and NISP's range is 1080 to 1255.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Which format?
+
+Module 5 will read the saved news back into Python, with every field of every article. Which format?
+
+- **a.** CSV, because Excel can open it
+- **b.** Markdown, because it is readable
+- **c.** JSON, because it keeps the lists and dicts exactly
+- **d.** SQLite, because it is a database
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Append on every run
+
+Module 3 will run the price pull every morning with `if_exists="append"` and the same 30-day window. What happens
+to `daily_prices` after a week?
+
+- **a.** Nothing: SQLite skips rows it already has
+- **b.** Most days are stored several times, so counts and averages are wrong
+- **c.** The table is replaced every morning
+- **d.** An error stops the second run
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 2.6 What if Sectors fails at 07:30? (errors and a saved copy)
+
+<Info>
+**The request**
+
+Your manager: **"From Module 3 this runs every morning on its own. What happens when something goes wrong?"**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** Which errors does a retry fix, and when do we use the saved copy?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** cause errors on purpose, catch them, and add a retry and a fallback to the request.
+> - **What carries forward:** the pattern you write in the exercise.
+
+| What goes wrong | What you see | Retry? | Saved copy? |
+|---|---|---|---|
+| Server slow or down | `Timeout`, `ConnectionError`, 5xx | yes, with a pause | yes, with a warning |
+| Too many requests | 429 | yes, with a longer pause | yes, with a warning |
+| Wrong or missing key | 401 / 403 | no: fix the key | no |
+| Wrong ticker or path | 404 | no: fix the request | no |
+
+```python
+for label, call in [("wrong ticker", lambda: get_sectors("/company/report/XXXX/")),
+                    ("impossible timeout", lambda: requests.get(f"{BASE_URL}/daily/NISP/", headers=headers, timeout=0.001))]:
+    try:
+        call()
+    except requests.exceptions.HTTPError as e:
+        print(f"{label}: HTTPError {e.response.status_code}")
+    except requests.exceptions.Timeout as e:
+        print(f"{label}: {type(e).__name__}")
+```
+
+The retry and fallback, for prices. Note what it **does not** catch: a 404 or 401 still raises, because the saved
+copy would hide a mistake:
+
+```python
+import time
+
+def get_daily_prices_safe(ticker, start, end, retries=3):
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(f"{BASE_URL}/daily/{ticker}/", headers=headers,
+                                    params={"start": start, "end": end}, timeout=30)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            print(f"Attempt {attempt}: {type(e).__name__}")
+            time.sleep(2 * attempt)
+            continue
+        if response.status_code == 429 or response.status_code >= 500:
+            print(f"Attempt {attempt}: status {response.status_code}")
+            time.sleep(2 * attempt)
+            continue
+        response.raise_for_status()          # 401, 404: stop, a person must look
+        return response.json()
+
+    print(f"⚠️ Sectors unavailable: using the saved copy for {ticker}")
+    with open(f"data/sample/daily_{ticker}.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+BASE_URL = "https://api.sectors.app.invalid/v2"      # pretend Sectors is down
+rows = get_daily_prices_safe("NISP", START, END, retries=2)
+BASE_URL = "https://api.sectors.app/v2"
+print(len(rows), "rows from the saved copy, last date", rows[-1]["date"])
+```
+
+### Your turn: A wrong key must not fall back
+
+Call `get_daily_prices_safe("NISP", START, END)` with a wrong key (set `headers = {"Authorization": "wrong-key"}`
+for the call, then restore it from `.env`). Catch the error and print its status code. The right result is `401`, with no
+"using the saved copy" message: a wrong key is a problem for a person, not a reason to send old data.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Three times 503
+
+At 07:30 Sectors answers 503 three times in a row. What should the script do?
+
+- **a.** Stop with an error and send no report
+- **b.** Use the saved copy and say clearly that it is old data
+- **c.** Keep retrying every second until it works
+- **d.** Return an empty list without a message
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: When not to fall back
+
+For which problem must the script **not** use the saved copy?
+
+- **a.** A timeout
+- **b.** Status 503
+- **c.** Status 404 for a mistyped ticker
+- **d.** Status 429
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 2.7 From notebook to script
+
+A notebook is for exploring: its state depends on which cells ran, in which order. Module 3 will run the data
+layer at 07:30 with nobody watching, so it becomes a `.py` file that starts fresh every time.
+
+Open `day1/examples/m2_example.py` (next, about 10 minutes). It has the same pieces as this notebook, arranged
+for an unattended run:
+
+- one `get_sectors` with the retry, and the saved copy as the fallback for each data function
+- a `main()` that loops over the banks with a `try`/`except` **per bank**, so one failure does not stop the rest
+- a line in `output/run_log.txt` for every run
+
+Then the exercise `day1/exercises/m2_exercise.py` (about 30 minutes): you write that data layer yourself, and
+the checks at the bottom tell you when it is done.
+
+| Check | In any data pull, yours or anyone else's |
+|---|---|
+| Request | Right path and parameters, the key in the header, a timeout? |
+| Status | Checked before the answer was read? |
+| Dates | Which day does the data describe? |
+| Files | Read back after saving? |
+| Failures | Caught and reported, and the saved copy used only when the source is down? |
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day1/notebooks/m2_data_layer.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

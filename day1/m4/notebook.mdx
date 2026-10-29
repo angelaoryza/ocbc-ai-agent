@@ -1,0 +1,384 @@
+---
+title: "Module 4 notebook: the first LLM call"
+description: "Call Gemini from Python, put the report in the prompt, use templates and get structured output."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 4 (about 31 minutes). After it come the example script
+`day1/examples/m4_example.py` and the exercise `day1/exercises/m4_exercise.py`. Run it from the top.
+
+Every LLM call uses quota. Run each LLM cell **once**; if you hit a quota error, change `GEMINI_MODEL` in `.env`.
+
+## Background
+
+The Module 3 report arrives at 07:30. The RMs say: *"We don't read tables at 07:45. Give us four sentences."*
+Your manager wants the LLM to write that digest, but **only from our report**:
+
+- **4.1 What an LLM call is.** Messages in, one message out, and nothing remembered.
+- **4.2 Calling the model from code.** The reply, the tokens, and a conversation you keep yourself.
+- **4.3 The report in the prompt.** Grounding the model in our data.
+- **4.4 Prompt templates.** One prompt with blanks, filled for any report or bank.
+- **4.5 Structured output.** Fields that code can use, checked by Pydantic.
+
+| Step on the ladder | Who decides WHICH data | Who decides WHEN |
+|---|---|---|
+| **Report in the prompt (Modules 3–4)** | **Our code** | **The scheduler** |
+| RAG (Module 5) | The user's question | The user |
+
+### Training objectives
+
+- Send system and human messages to Gemini through LangChain and read the reply and its token use
+- Explain why the model must get every fact in the prompt, and keep a conversation yourself
+- Put a report in the prompt so the model answers from it, and write rules that stop invented numbers
+- Turn a prompt into a reusable `ChatPromptTemplate` and chain it to the model
+- Get structured output as a Pydantic object, and design your own schema
+
+### The report
+
+So that everyone works with the same numbers, this notebook builds the Module 3 report from the saved Sectors
+answers in `data/sample/` (prices up to **23 October 2026**). The scheduled job uses today's report.
+
+
+## 4.1 What an LLM call is
+
+<Info>
+**The request**
+
+Your manager: **"Before we hand the model our report, show me what a call actually sends and gets back."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What goes into one call, and what comes back?
+> - **How we run it:** **Live, about 5 minutes.**
+> - **What you will do:** create the chat model, send a system and a human message, and read the reply.
+> - **What carries forward:** `llm`, used in every section below.
+
+A call sends a list of **messages** and gets one message back. The **system** message holds the rules, the
+**human** message holds the task and the data, and the reply is an **AI** message. `ChatGoogleGenerativeAI` is
+the same model setup as in `learning-agent/`; the key comes from `.env`.
+
+```python
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+messages = [
+    ("system", "You answer questions about Indonesian bank stocks in one sentence. Never give buy or sell advice."),
+    ("human", "What kind of company is PT Bank OCBC NISP Tbk?"),
+]
+response = llm.invoke(messages)
+print(type(response).__name__)
+print(response.text)
+```
+
+### Knowledge check: Where do the rules go?
+
+The digest must never contain buy or sell advice, for every RM and every morning. Where does that rule belong?
+
+- **a.** In the human message, after the report
+- **b.** In the system message
+- **c.** In the model name
+- **d.** In `.env`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 4.2 Calling the model from code
+
+<Info>
+**The request**
+
+Your manager: **"What does a call cost, and can the RM ask a follow-up question?"**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What do we read from the reply, and how does the model 'remember'?
+> - **How we run it:** **Live, about 6 minutes.**
+> - **What you will do:** read the text and the token use, see that a second call remembers nothing, and pass the history yourself.
+> - **What carries forward:** the habit of sending everything the model needs in every call.
+
+Read the reply with **`response.text`** (with Gemini 3, `response.content` is a list of blocks).
+`response.usage_metadata` shows the **tokens**, which is what you pay for. Then a second, separate call:
+
+```python
+print("Tokens:", response.usage_metadata)
+
+follow_up = llm.invoke([("human", "What is its ticker on the Indonesia Stock Exchange?")])
+print(follow_up.text)
+```
+
+The model has no idea what "its" means: every call is **stateless**. A chat app "remembers" because it sends
+the earlier messages again, with the model's own answer as an `("ai", ...)` message.
+
+### Your turn: Keep the conversation yourself
+
+Send the follow-up question again, but this time with the history: the two messages from 4.1, the model's
+answer (`("ai", response.text)`), then the follow-up as a human message. Print the reply and the total tokens. The right
+result names the ticker `NISP`, and uses more tokens than the first call, because the history is sent again.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Stateless
+
+A scheduled job asks the model for the digest at 07:30, and at 07:35 a second job asks "Which bank fell most in
+the digest?" without sending anything else. What happens?
+
+- **a.** The model answers from the 07:30 digest
+- **b.** The model cannot know: it gets no digest in the second call
+- **c.** LangChain sends the digest automatically
+- **d.** Gemini caches the digest for an hour
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 4.3 The report in the prompt
+
+<Info>
+**The request**
+
+Your manager: **"The digest must use our numbers, not whatever the model thinks it knows."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we make the model answer from our data, and only from it?
+> - **How we run it:** **Live, about 7 minutes.**
+> - **What you will do:** ask without data, then with the report between tags and strict rules; then write a prompt of your own.
+> - **What carries forward:** `SYSTEM_PROMPT` and the `<report>` pattern, used in the example and the exercise.
+
+```python
+no_data = llm.invoke([("human", "How did BBCA close on 23 October 2026? Give the price.")])
+print(no_data.text)
+```
+
+Without data the model either refuses or, worse, gives a number that looks right. With the report **between
+tags**, the data is clearly separated from our instructions, and the rules say to use nothing else:
+
+```python
+SYSTEM_PROMPT = """You write a short morning digest of Indonesian bank stocks for relationship managers.
+Use only the facts in the report. Quote numbers exactly, with their dates.
+Never give buy, sell or hold advice, price targets or predictions."""
+
+human_prompt = f"""<report>
+{report}
+</report>
+
+Write the digest: one headline sentence, then one short sentence per bank."""
+
+digest = llm.invoke([("system", SYSTEM_PROMPT), ("human", human_prompt)])
+print(digest.text)
+```
+
+### Your turn: A one-bank brief
+
+An RM covering BBCA wants **two sentences about BBCA only**: the last close with its date, and the 1-day and 10-day
+change. Write the human prompt (the report between `<report>` tags, then the task), call the model with `SYSTEM_PROMPT`,
+and print the reply. The right result quotes `5,025` on `2026-10-23`, `-2.90%` and `-15.55%`, and gives no advice.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Why the tags?
+
+Why do we put the report between `<report>` and `</report>`?
+
+- **a.** Gemini only reads XML
+- **b.** It separates our data from our instructions, so the model knows what is data
+- **c.** It makes the call cheaper
+- **d.** It hides the data from the model
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: A number that is not in the report
+
+An RM asks the digest bot for BBCA's dividend yield, which is **not** in the report. With our system prompt, what is
+the right behaviour?
+
+- **a.** Give the yield from the model's own knowledge
+- **b.** Say that the report does not contain it
+- **c.** Estimate it from the price
+- **d.** Call Sectors to get it
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 4.4 Prompt templates
+
+<Info>
+**The request**
+
+Your manager: **"Tomorrow there is a new report, and every RM wants a brief on a different bank. Don't copy-paste
+f-strings: make the prompt one thing we can reuse."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we write a prompt once and fill it in for any report or bank?
+> - **How we run it:** **Live, about 6 minutes.**
+> - **What you will do:** turn the 4.3 prompt into a `ChatPromptTemplate`, see the messages it makes, and chain it to the model with `|`.
+> - **What carries forward:** `digest_prompt` and the `prompt | llm` chain, used in 4.5, the example and Module 9.
+
+A **prompt template** is the prompt with **blanks** in `{curly braces}`. `ChatPromptTemplate.from_messages` takes the
+same `(role, text)` pairs as before; `invoke` with a dict fills the blanks and returns the messages. No model call yet:
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+
+digest_prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "<report>\n{report}\n</report>\n\n{task}"),
+])
+print("Blanks:", digest_prompt.input_variables)
+
+filled = digest_prompt.invoke({"report": report, "task": "Write the digest: one headline sentence, then one short sentence per bank."})
+for message in filled.to_messages():
+    print(type(message).__name__, "->", message.content[:80].replace("\n", " "), "...")
+```
+
+`prompt | llm` makes a **chain**: the filled messages go straight into the model. The same chain works for any report
+and any task, and `chain.batch([...])` runs it for several inputs at once. A `("placeholder", "{history}")` message
+would also let you pass the 4.2 conversation into a template.
+
+```python
+digest_chain = digest_prompt | llm
+print(digest_chain.invoke({"report": report, "task": "In one sentence: which bank fell most over 10 days?"}).text)
+```
+
+### Your turn: A brief for any bank
+
+Write `brief_prompt`, a template with **two** blanks, `{report}` and `{ticker}`: the `SYSTEM_PROMPT`, then the report
+between tags and the task *"In two sentences about \{ticker\} only: its last close with the date, then its 1-day and 10-day
+change."* Chain it to `llm` and run it for NISP and BMRI with one `batch` call. The right result: NISP `1,185` on
+`2026-10-23`, `+0.42%`, `-4.05%`; BMRI `3,900`, `+1.30%`, `-2.74%`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Why a template?
+
+The digest job runs every morning with a new report. What does the template give us over writing the f-string again?
+
+- **a.** The model answers faster
+- **b.** One prompt, written and reviewed once; each run only fills in the blanks
+- **c.** The model remembers yesterday's report
+- **d.** It removes the need for a system message
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: A curly brace too many
+
+You add an example to the system message of a template: `Answer like {"ticker": "BBCA"}`. Now `invoke` fails with a
+missing-variable error. Why?
+
+- **a.** Gemini does not accept JSON
+- **b.** In a template, `{...}` is a blank to fill; write `{{` and `}}` for a literal brace
+- **c.** System messages cannot contain examples
+- **d.** The report is too long
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 4.5 Structured output
+
+<Info>
+**The request**
+
+Your manager: **"Module 9 will raise an alert when a bank moves a lot. Code cannot read sentences; give it fields."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we get fields we can trust from the model?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** describe the fields with Pydantic, call `with_structured_output`, then design a schema of your own.
+> - **What carries forward:** the `BankDigest` pattern used in the exercise, and the idea of an alert used on Day 2.
+
+A **Pydantic** model describes the fields and their types. `llm.with_structured_output(Model)` returns a Python
+object of that class, checked on the way in: a value outside a `Literal` raises an error instead of reaching your code.
+`Field(description=...)` tells the model what a field means. It chains to a template like `llm` does.
+
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
+
+class BankDigest(BaseModel):
+    ticker: str
+    last_close: int
+    trend: Literal["up", "down", "flat"] = Field(description="Direction of the 10-day change")
+    summary: str = Field(description="One factual sentence from the report")
+
+class MorningDigest(BaseModel):
+    headline: str
+    banks: list[BankDigest]
+
+structured_chain = digest_prompt | llm.with_structured_output(MorningDigest)
+result = structured_chain.invoke({"report": report, "task": "Write the digest: one headline sentence, then one short sentence per bank."})
+for bank in result.banks:
+    print(bank.ticker, bank.last_close, bank.trend, "|", bank.summary)
+result.model_dump()["banks"][0]
+```
+
+### Your turn: Design an alert
+
+Design a schema for alerts: `Alert` with `ticker` (str), `direction` (only `"up"` or `"down"`), `change_pct` (float,
+the 1-day change in percent) and `reason` (str, one sentence from the report), and `Alerts` with a list `alerts`. Ask the
+model for an alert for every bank whose **1-day** change is larger than 2% in either direction, through `digest_prompt`
+with your own task. The right result is one
+alert: `BBCA`, `down`, about `-2.9`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: What guarantees the values?
+
+`with_structured_output(MorningDigest)` returns `trend="up"`. What guarantees that `trend` can only be up, down or flat?
+
+- **a.** The system prompt
+- **b.** The `Literal[...]` type in the Pydantic model, checked when the object is built
+- **c.** The model's training
+- **d.** Nothing
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Who decides the threshold?
+
+In the alert exercise the model decided which banks moved more than 2%. For Module 9's real alerts, what is better?
+
+- **a.** Keep asking the model: it is good at arithmetic
+- **b.** Compute the change and the 2% test in code; let the model only write the reason
+- **c.** Ask the model twice and compare
+- **d.** Let the RMs decide each morning
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## Module 4 wrap-up
+
+| Question | Answer in this module |
+|---|---|
+| What does the model know? | Only what is in the messages of this call |
+| Where are the rules? | The system message |
+| Where is the data? | Between `<report>` tags in the human message |
+| How do we reuse a prompt? | `ChatPromptTemplate` with `{blanks}`, chained with `prompt \| llm` |
+| How does code use the answer? | `with_structured_output` + Pydantic |
+| Who chose the data? | **Our code** (the Module 3 report) |
+
+**Next:** `day1/examples/m4_example.py` (it reads today's Module 3 report through a template), then the exercise
+`day1/exercises/m4_exercise.py`. In Module 5 the **question** starts choosing the data.
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day1/notebooks/m4_first_llm_call.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

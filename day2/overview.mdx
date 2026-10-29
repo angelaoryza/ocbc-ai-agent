@@ -1,0 +1,53 @@
+---
+title: "Day 2 overview"
+description: "Tools, MCP, and building an agent from scratch (Modules 6 to 9)."
+sidebarTitle: "Overview"
+icon: "map"
+---
+
+## Background
+
+On Day 1, the system collected data and connected it to the model, but **our code**, or the user’s question, always decided which data the model saw. Day 2 is the third stage of the Module 1 framework: **deciding the actions**. The model is given tools and starts asking for the data it needs, step by step, and the system learns when an action needs a person’s approval.
+
+1.  **Module 6, Tools:** functions the model can request, and how to describe and choose them.
+2.  **Module 7, Agent:** the plan–act–observe loop, rules, ready-made tools, and approval before actions.
+3.  **Module 8, MCP:** tools offered by a provider’s server instead of written by us.
+4.  **Module 9, Integration:** a schedule or a condition starts the agent, with nobody asking.
+
+<Frame caption="The control ladder: Day 2 climbs from tool calling to a scheduled agent">
+  <img src="/images/day2/control-ladder-day-2.png" alt="The control ladder: Day 2 climbs from tool calling to a scheduled agent" />
+</Frame>
+
+**Day 2 in one line: the LLM asks for the data it needs.**
+
+## Training objectives
+
+By the end of Day 2, participants are able to:
+
+- Explain what a tool is, wrap a Sectors endpoint as a callable tool with `@tool`, and write descriptions that lead the model to the right tool
+- Explain why the model only requests tool calls and our code executes them, and choose the 3 to 5 tools an agent needs
+- Write an agent’s plan, act and observe loop in code with LangChain’s `create_agent`, and read each step in its messages
+- Answer natural-language questions about a company or a ranking with an agent, and check every number against tool results
+- Review and approve an agent’s actions before they run, using `HumanInTheLoopMiddleware` and a checkpointer
+- Explain what MCP is and why an agent needs it, connect to the Sectors MCP server as a client, filter its tools, and mix them with local tools
+- Connect a scheduler, a coded condition and an agent into one triggered flow
+
+## Course data and tools
+
+**Data.** The same as Day 1: public market data from Sectors, the news saved in Module 2, and saved responses in `data/sample/`. On Day 2 the data reaches the model through **our own tools** and through the **Sectors MCP server**.
+
+**Tools and files.**
+
+| Area | Tool |
+|----|----|
+| Tools | `@tool` from `langchain.tools` |
+| Agent | `langchain.agents.create_agent` |
+| Approval | `HumanInTheLoopMiddleware`, `InMemorySaver` (LangGraph checkpointer), `Command(resume=...)` |
+| MCP | `fastmcp` `Client` with `StreamableHttpTransport`; LangChain’s MCP adapter `langchain.mcp.MCPAdapter` (beta) |
+| Scheduling | APScheduler, as on Day 1 |
+
+| Folder | Holds |
+|----|----|
+| `day2/notebooks/` | One notebook per module (M6 to M8) |
+| `day2/examples/` | One runnable script per module (M6 to M9); each file holds all the functions it uses |
+| `day2/exercises/` | The exercise for each module, with a self-check |

@@ -1,54 +1,168 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "OCBC AI Creator Masterclass",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#28568A",
+    "light": "#ACC9E3",
+    "dark": "#3E526A"
   },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
+  "background": {
+    "color": {
+      "light": "#FAF6ED",
+      "dark": "#001017"
     }
   },
+  "fonts": {
+    "family": "Ubuntu Sans",
+    "heading": {
+      "family": "Average",
+      "weight": 400
+    }
+  },
+  "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Getting started",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "getting-started/setup",
+              "getting-started/pre-course-checklist",
+              "getting-started/course-data",
+              "getting-started/folder-map"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Day 1",
+        "groups": [
+          {
+            "group": "Day 1",
+            "pages": [
+              "day1/overview"
+            ]
+          },
+          {
+            "group": "Module 1: AI systems overview",
+            "icon": "sitemap",
+            "pages": [
+              "day1/m1/concepts"
+            ]
+          },
+          {
+            "group": "Module 2: Data layer",
+            "icon": "database",
+            "pages": [
+              "day1/m2/concepts",
+              "day1/m2/notebook",
+              "day1/m2/example",
+              "day1/m2/exercise"
+            ]
+          },
+          {
+            "group": "Module 3: Automation",
+            "icon": "clock",
+            "pages": [
+              "day1/m3/concepts",
+              "day1/m3/notebook",
+              "day1/m3/example",
+              "day1/m3/exercise"
+            ]
+          },
+          {
+            "group": "Module 4: First LLM call",
+            "icon": "message",
+            "pages": [
+              "day1/m4/concepts",
+              "day1/m4/notebook",
+              "day1/m4/example",
+              "day1/m4/exercise"
+            ]
+          },
+          {
+            "group": "Module 5: RAG",
+            "icon": "magnifying-glass",
+            "pages": [
+              "day1/m5/concepts",
+              "day1/m5/notebook",
+              "day1/m5/example",
+              "day1/m5/exercise"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Day 2",
+        "groups": [
+          {
+            "group": "Day 2",
+            "pages": [
+              "day2/overview"
+            ]
+          },
+          {
+            "group": "Module 6: Tools",
+            "icon": "wrench",
+            "pages": [
+              "day2/m6/concepts",
+              "day2/m6/notebook",
+              "day2/m6/example",
+              "day2/m6/exercise"
+            ]
+          },
+          {
+            "group": "Module 7: Agent",
+            "icon": "robot",
+            "pages": [
+              "day2/m7/concepts",
+              "day2/m7/notebook",
+              "day2/m7/example",
+              "day2/m7/exercise"
+            ]
+          },
+          {
+            "group": "Module 8: MCP",
+            "icon": "plug",
+            "pages": [
+              "day2/m8/concepts",
+              "day2/m8/notebook",
+              "day2/m8/example",
+              "day2/m8/exercise"
+            ]
+          },
+          {
+            "group": "Module 9: Integration",
+            "icon": "bell",
+            "pages": [
+              "day2/m9/concepts",
+              "day2/m9/example",
+              "day2/m9/exercise"
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:support@mintlify.com"
+        "label": "Sectors",
+        "href": "https://sectors.app"
+      },
+      {
+        "label": "Algoritma",
+        "href": "https://algorit.ma"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
+    ]
   },
   "contextual": {
     "options": [
@@ -61,12 +175,5 @@
       "cursor",
       "vscode"
     ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
   }
 }

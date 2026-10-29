@@ -1,0 +1,353 @@
+---
+title: "Module 5 notebook: RAG over the saved news"
+description: "Load the saved news, split it into chunks, embed it, retrieve the closest chunks and answer with sources."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 5 (about 32 minutes). After it come the example script
+`day1/examples/m5_example.py` and the exercise `day1/exercises/m5_exercise.py`. Run it from the top.
+
+## Background
+
+The morning digest works. Now the RMs ask questions of their own: *"Why did the banks fall in mid October?"*,
+*"What did NISP announce?"* The answers are in the news you saved in Module 2, but about 70 articles are too many to
+paste into every prompt. With **RAG** the **question** decides which pieces of news reach the model:
+
+- **5.1 Load the news.** Articles as documents with metadata.
+- **5.2 Split.** Chunks small enough to be about one thing.
+- **5.3 Embed.** Text as numbers that capture meaning.
+- **5.4 Store and retrieve.** The chunks closest to a question.
+- **5.5 Answer from the sources.** A grounded prompt with citations.
+
+| Step on the ladder | Who decides WHICH data | Who decides WHEN |
+|---|---|---|
+| Report in the prompt (Modules 3–4) | Our code | The scheduler |
+| **RAG (Module 5)** | **The user's question** | **The user, by asking** |
+
+### Training objectives
+
+- Load saved articles as LangChain documents with metadata
+- Choose a chunk size and overlap, and see what they change
+- Explain embeddings and cosine similarity, and compute a similarity yourself
+- Retrieve the closest chunks with `k` and a metadata filter
+- Write a grounded prompt that cites its sources and admits when they do not cover the question
+
+### The practice data
+
+Module 2 saved the news in `data/news/`. So that everyone retrieves the same articles, this notebook uses the copy
+saved on 25 October 2026 in `data/sample/news_<TICKER>.json` (same format, 20 articles per bank). The example and the
+exercise use your own `data/news/`.
+
+Embeddings have a free-tier limit of about 100 texts per minute: run the embedding cells **once**.
+
+
+## 5.1 Load the news
+
+<Info>
+**The request**
+
+An RM: **"Why did the bank stocks fall so much in mid October?"** The answer is somewhere in 80 articles.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** Why not paste all the news into the prompt, and what does a document need to carry?
+> - **How we run it:** **Live, about 5 minutes.**
+> - **What you will do:** turn every article into a `Document` with metadata, and measure what pasting everything would cost.
+> - **What carries forward:** `docs`, split in 5.2.
+
+A LangChain `Document` holds the text in `page_content` and everything else in `metadata`. Metadata is what lets
+us **filter** (by ticker) and **cite** (title, date) later. One article can mention two banks, so it can be in two
+files: we keep each title once.
+
+```python
+import json
+from langchain_core.documents import Document
+
+TICKERS = ["BBCA", "BBRI", "BMRI", "NISP"]
+
+docs, seen_titles = [], set()
+for ticker in TICKERS:
+    with open(f"data/sample/news_{ticker}.json", encoding="utf-8") as f:
+        for article in json.load(f):
+            if article["title"] in seen_titles:
+                continue
+            seen_titles.add(article["title"])
+            docs.append(Document(
+                page_content=article["title"] + "\n\n" + article["body"],
+                metadata={"title": article["title"], "date": article["timestamp"][:10],
+                          "source": article["source"], "ticker": ticker},
+            ))
+
+total_chars = sum(len(d.page_content) for d in docs)
+print(len(docs), "articles,", f"{total_chars:,} characters (about {total_chars // 4:,} tokens) in every prompt")
+docs[0].metadata
+```
+
+### Knowledge check: Paste or retrieve?
+
+When is pasting the data into the prompt better than RAG?
+
+- **a.** Never
+- **b.** When the data is large
+- **c.** When the data is small and all of it is needed, like the Module 3 report
+- **d.** When the user asks a question
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 5.2 Split into chunks
+
+<Info>
+**The request**
+
+Your manager: **"A long article covers five topics. Retrieve the paragraph that answers, not the whole article."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How big should a chunk be?
+> - **How we run it:** **Live, about 5 minutes.**
+> - **What you will do:** split the articles, check that metadata travels with each chunk, and compare chunk sizes.
+> - **What carries forward:** `chunks`, embedded in 5.4.
+
+```python
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
+chunks = splitter.split_documents(docs)
+
+print(len(docs), "articles ->", len(chunks), "chunks; longest", max(len(c.page_content) for c in chunks), "characters")
+print(chunks[0].metadata)
+```
+
+### Your turn: Compare chunk sizes
+
+Split `docs` with `chunk_size` 500, 1500 and 4000 (overlap 10% of the size) and print, for each size, the number
+of chunks and the average chunk length. Do **not** embed them. The right result: the smaller the size, the more chunks
+(500 gives several times as many as 1500). Which size fits our 100-texts-per-minute embedding limit?
+
+```python
+## Your code below
+```
+
+### Knowledge check: The overlap
+
+What is the `chunk_overlap` for?
+
+- **a.** It makes chunks smaller
+- **b.** A sentence cut at a chunk border stays readable in both chunks
+- **c.** It removes duplicate articles
+- **d.** It speeds up the embedding
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 5.3 Embeddings and similarity
+
+<Info>
+**The request**
+
+An RM types *"Why did bank stocks drop?"*, but the article says *"Foreign investors sold Indonesian bank
+shares"*. Not one word in common.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How can a search find meaning instead of matching words?
+> - **How we run it:** **Live, about 6 minutes.**
+> - **What you will do:** embed three sentences and a question, then compute the similarity yourself.
+> - **What carries forward:** `embeddings`, used by the vector store in 5.4.
+
+An **embedding** turns a text into a long list of numbers; texts with a similar **meaning** point in a similar
+direction. **Cosine similarity** measures that: close to 1 means similar, close to 0 means unrelated. Documents and
+questions are embedded slightly differently (`embed_documents`, `embed_query`).
+
+```python
+import numpy as np
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview",
+                                          google_api_key=os.getenv("GEMINI_API_KEY"))
+
+sentences = [
+    "Foreign investors sold Indonesian bank shares after the MSCI announcement.",
+    "Bank OCBC NISP completed an acquisition in the insurance business.",
+    "The weather in Jakarta was sunny on Friday.",
+]
+sentence_vectors = embeddings.embed_documents(sentences)
+question_vector = embeddings.embed_query("Why did bank stocks drop?")
+print(len(sentence_vectors), "vectors of", len(question_vector), "numbers")
+```
+
+### Your turn: Compute the similarity
+
+Write `cosine_similarity(a, b)` (the dot product divided by the product of the two lengths: `np.dot`, `np.linalg.norm`)
+and print the score of the question against each sentence, highest first. The right result ranks the sell-off sentence
+first and the weather sentence last.
+
+```python
+## Your code below
+```
+
+### Knowledge check: What the numbers mean
+
+Two chunks have a cosine similarity of 0.92 with the question; a third has 0.41. What does that tell you?
+
+- **a.** The first two contain more of the question's words
+- **b.** The first two are closer in meaning to the question
+- **c.** The third is newer
+- **d.** The first two are longer
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 5.4 Store and retrieve
+
+<Info>
+**The request**
+
+The RM's question again: **"Why did Indonesian bank stocks fall sharply in mid October 2026?"**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we find the chunks that answer a question, and only from the right bank?
+> - **How we run it:** **Live, about 7 minutes.**
+> - **What you will do:** embed all chunks into a vector store, search with `k`, then add a metadata filter.
+> - **What carries forward:** `vector_store`, which `ask_news` uses in 5.5.
+
+A **vector store** keeps every chunk with its embedding and returns the `k` closest to a question.
+`InMemoryVectorStore` is enough for our news (about 80 chunks: one embedding call each, once). A `filter` on the
+metadata keeps only some chunks.
+
+```python
+from langchain_core.vectorstores import InMemoryVectorStore
+
+vector_store = InMemoryVectorStore.from_documents(chunks, embeddings)
+
+question = "Why did Indonesian bank stocks fall sharply in mid October 2026?"
+for doc in vector_store.similarity_search(question, k=4):
+    print(doc.metadata["date"], "|", doc.metadata["ticker"], "|", doc.metadata["title"][:80])
+```
+
+### Your turn: Only one bank, only recent news
+
+An RM covering NISP asks *"What did the bank announce about acquisitions?"* Retrieve the **3** closest chunks, but
+only from **NISP** news **dated 2026-10-01 or later** (the `filter` is a function that gets a `Document` and returns
+`True` to keep it; dates are `YYYY-MM-DD` strings, so `>=` works). Print date, ticker and title. The right result is
+3 NISP chunks, all from October 2026.
+
+```python
+## Your code below
+```
+
+### Knowledge check: The wrong bank
+
+A question about BBRI gets an answer built on BBCA news. What is the simplest fix?
+
+- **a.** A filter on the ticker
+- **b.** A bigger model
+- **c.** Longer chunks
+- **d.** A higher `k`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 5.5 Answer from the sources
+
+<Info>
+**The request**
+
+Your manager: **"An RM must be able to check every sentence. And if the news does not say, the answer must say so."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we make the answer grounded and checkable?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** put the retrieved chunks in the prompt as numbered sources, ask with and without coverage, then extend `ask_news`.
+> - **What carries forward:** `ask_news`, which becomes the `search_news` tool on Day 2.
+
+```python
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+
+RULES = """Answer the question using only the sources below. Cite them as [1], [2], ...
+If the sources do not answer the question, say "The saved news does not cover this."
+Never give buy or sell advice."""
+
+
+def ask_news(question, k=4):
+    results = vector_store.similarity_search(question, k=k)
+    sources = ""
+    for i, doc in enumerate(results, start=1):
+        sources += f"[{i}] {doc.metadata['title']} ({doc.metadata['date']})\n{doc.page_content}\n\n"
+    answer = llm.invoke(f"{RULES}\n\n<sources>\n{sources}</sources>\n\nQuestion: {question}").text
+    return answer, results
+
+
+answer, results = ask_news(question)
+print(answer, "\n")
+for i, doc in enumerate(results, start=1):
+    print(f"[{i}] {doc.metadata['title']} ({doc.metadata['date']})")
+```
+
+```python
+answer, _ = ask_news("What is BBCA's dividend policy for 2030?")      # not in the news
+print(answer)
+```
+
+### Your turn: Ask about one bank
+
+Write `ask_bank_news(ticker, question, k=3)`: the same as `ask_news`, but it retrieves only chunks of that ticker
+(your filter from 5.4) and returns the answer and the list of `(date, title)` of the sources. Ask it about **NISP**:
+*"What did the bank announce about acquisitions?"* The right result cites `[1]`–`[3]`, and every source is a NISP article.
+
+```python
+## Your code below
+```
+
+### Knowledge check: A poor answer
+
+An RM says an answer missed an important article. What do you check **first**?
+
+- **a.** The model: switch to a bigger one
+- **b.** The retrieved chunks: was the article among them?
+- **c.** The system prompt wording
+- **d.** The chunk overlap
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Not covered
+
+Why does the prompt tell the model to say "The saved news does not cover this."?
+
+- **a.** To save tokens
+- **b.** So the model does not fill a gap with its own guess, which an RM could take as fact
+- **c.** Because Gemini requires it
+- **d.** To make the answer shorter
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## Module 5 wrap-up
+
+| Step | Here | Decides |
+|---|---|---|
+| Load | `Document` + metadata | what we can filter and cite |
+| Split | `RecursiveCharacterTextSplitter` | what one search hit contains |
+| Embed + store | `GoogleGenerativeAIEmbeddings`, `InMemoryVectorStore` | how meaning is compared |
+| Retrieve | `similarity_search(question, k, filter)` | **which data the model sees** |
+| Answer | numbered sources, rules | whether an RM can check it |
+
+**Day 1 in one line:** *we tell the LLM what the data is.* Tomorrow `ask_news` becomes a tool, and the LLM asks for
+data itself. **Next:** `day1/examples/m5_example.py`, then `day1/exercises/m5_exercise.py`.
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day1/notebooks/m5_rag.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

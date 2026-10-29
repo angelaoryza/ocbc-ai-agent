@@ -1,33 +1,39 @@
-> **First-time setup**: Customize this file for your project. Prompt the user to customize this file for their project.
-> For Mintlify product knowledge (components, configuration, writing standards),
-> install the Mintlify skill: `npx skills add https://mintlify.com/docs`
-
 # Documentation project instructions
 
 ## About this project
 
-- This is a documentation site built on [Mintlify](https://mintlify.com)
-- Pages are MDX files with YAML frontmatter
-- Configuration lives in `docs.json`
-- Use the Mintlify MCP server, `https://mcp.mintlify.com`, to edit content and settings via MCP
-- Use the Mintlify docs MCP server, `https://www.mintlify.com/docs/mcp`, to query information about using Mintlify via MCP
+- The participant site for the **OCBC AI Creator Masterclass**, a 4-day build sprint by Algoritma for PT Bank OCBC NISP Tbk. Participants build the **IDX Market Assistant** on Indonesian stock data from Sectors.
+- Built on [Mintlify](https://mintlify.com). Pages are MDX files with YAML frontmatter; configuration lives in `docs.json`; brand styling that `docs.json` cannot express lives in `style.css`.
+- Content comes from the course materials repo (`agentic-ai-ocbc`): the coursebooks become **Concepts** pages, the notebooks **Notebook walkthrough** pages, `examples/` **Worked example** pages and `exercises/` **Exercise** pages.
+- Use the Mintlify docs MCP server, `https://www.mintlify.com/docs/mcp`, to check component syntax and `docs.json` fields.
 
 ## Terminology
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- "IDX Market Assistant": the system participants build.
+- "Sectors": the data provider. Use "Sectors API" and "Sectors MCP server".
+- "Gemini": the LLM.
+- "module", not "lesson".
+- "participant", not "student".
+- "trainer".
 
 ## Style preferences
 
-{/* Add any project-specific style rules below */}
-
-- Use active voice and second person ("you")
-- Keep sentences concise — one idea per sentence
-- Use sentence case for headings
-- Bold for UI elements: Click **Settings**
-- Code formatting for file names, commands, paths, and code references
+- Sentence case for headings, labels and buttons. Keep section numbers such as `2.3`.
+- Second person ("you"), active voice. One idea per sentence.
+- Bold for UI elements: click **Run All**.
+- Code formatting for files, commands, paths and environment variable names: `day1/examples/m2_example.py`, `SECTORS_API_KEY`.
+- Keep the course author's wording when converting materials. Fix only conversion artefacts; do not add explanations, examples or summaries that are not in the source.
+- Use callouts only where the source signals them: a boxed note becomes `<Note>`, a warning `<Warning>`, a scenario or "think about it" box `<Info>`.
 
 ## Content boundaries
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+The site is public. It holds participant materials only. Never read from, quote, paraphrase or link to:
+
+- `day1/solutions/`, `day2/solutions/` (including `solutions/notebooks/`)
+- Either `Trainer Handbook - Day N ...docx` file
+- `_build/`
+- `.env`, `token.json`, `credentials.json`, or any API key value
+
+Knowledge-check answers stay in the notebooks (hashed). Show the question and options, then: "Answer this in the notebook; the check cell tells you if you are right." Never publish answers, solutions or cell outputs from solved notebooks. **Your turn** cells show the task and the starting code only.
+
+The source repo is private: do not link to its files on GitHub.

@@ -1,0 +1,43 @@
+---
+title: "Folder map and order of work"
+description: "What is in the course folder, and which scripts to run first if you start later in the course."
+sidebarTitle: "Folder map"
+icon: "folder-tree"
+---
+
+## Folder map
+
+```text
+README.md, requirements.txt, .env.example, check_setup.py
+data/sample/              saved real Sectors responses (25 Oct 2026), used when Sectors is unreachable
+day1/                     Modules 1-5
+  Coursebook - Day 1 ... .docx          theory
+  notebooks/   m2-m5      recap, worked examples, knowledge checks
+  examples/    m2-m5      one runnable script per module
+  exercises/   m2-m5      exercises with checks at the bottom
+day2/                     Modules 6-9 (same layout; no notebook for M9)
+```
+
+Every notebook, example and exercise is self-contained: all the functions it uses are written in the file itself.
+
+Created while you work: `data/news/` (Module 2, used by Modules 5–9), `data/market.db`, `output/`.
+
+## Order of work
+
+Module 2 saves the news that Modules 5–9 use, and Module 3 writes the report that Module 4 reads. If you start later in the course, run these two first:
+
+```bash
+python day1/examples/m2_example.py
+python day1/examples/m3_example.py --now
+```
+
+## How each module is laid out on this site
+
+| Page | From | What you do with it |
+|---|---|---|
+| **Concepts** | The coursebook | Read the ideas and the reasoning behind the module |
+| **Notebook walkthrough** | `dayN/notebooks/` | Follow along, then run the notebook in VS Code |
+| **Worked example** | `dayN/examples/` | Run the finished script and read how it is built |
+| **Exercise** | `dayN/exercises/` | Write the missing code until the checks pass |
+
+Module 1 has concepts only. Module 9 has no notebook.

@@ -1,0 +1,113 @@
+---
+title: "Module 7: Building an AI agent"
+description: "An agent that plans, acts and observes in a loop, and the rules and approvals that keep it under control."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+In Module 6 the model made one choice per question. Many real questions need more: *“Which bank has the highest return on equity, and how did its shares trade last week?”* cannot be answered in one step, because the second step depends on the result of the first. An **agent** keeps going: it asks for a tool, reads the result, decides what it still needs, and stops when it can answer.
+
+That freedom is exactly what makes agents useful and what makes them risky. This module is about building an agent and, just as much, about keeping it under control: the rules it follows, how to check what it did, which outside services it may use, and which of its actions need a person’s approval.
+
+## 7.1 The plan, act and observe loop
+
+<Frame caption="The agent loop: plan, act, observe, until a final answer">
+  <img src="/images/day2/agent-loop.png" alt="The agent loop: plan, act, observe, until a final answer" />
+</Frame>
+
+| Step | Who | What happens |
+|----|----|----|
+| **Plan** | The model | Reads the conversation and the tool descriptions; asks for a tool, or answers |
+| **Act** | Our program | Runs the requested tool (after approval, if it is an action) |
+| **Observe** | Our program | Adds the result to the conversation |
+| **Repeat or stop** |  | Back to Plan, until the model answers without asking for a tool |
+
+An agent needs four things: the **conversation** (its working memory for this question), the **tools**, a way to **run** them, and a **stop rule**. Nobody writes the sequence of steps; the model works it out from the question and the tool descriptions, and two runs of the same question may take slightly different routes.
+
+**Answering questions about a company or a ranking.** The same agent handles different kinds of natural-language question by choosing different routes:
+
+| Question | Route the agent typically takes |
+|----|----|
+| “How did BMRI trade last week?” (a company) | One price tool |
+| “Which three banks have the highest dividend yield?” (a ranking) | The ranking tool |
+| “Which bank has the highest ROE, and what was its last close?” | The ranking tool, then a company tool with the winner |
+
+**Agent or plain code?** If the steps are known in advance, write them in code: cheaper, faster, predictable (Module 3). Use an agent only when the steps depend on what the data shows.
+
+## 7.2 The loop in code
+
+LangChain’s `create_agent` builds the loop for us. We give it three things, the same three a new colleague would need: a **model** (who thinks), **tools** (what it can use) and a **system prompt** (its job description).
+
+```python
+agent = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)
+result = agent.invoke({"messages": [{"role": "user", "content": "Which bank has the highest ROE?"}]})
+```
+
+**The run is its own audit trail.** The result holds every message in order: each tool request (a plan), each tool result (act and observe), and the final answer. Reading it shows exactly how the agent reached its answer, and it is the evidence for checking that answer (7.3).
+
+**The stop rule.** The run ends when the model answers without asking for a tool. As a safety net, the agent also stops after a fixed number of steps, so a confused agent cannot loop forever.
+
+## 7.3 Rules and checking
+
+The **system prompt** is the agent’s job description: what to use, what never to do, how to answer. For the IDX Market Assistant: use the tools for every number; give the date of every price; never give advice; only save or send when asked.
+
+A rule in the prompt is a **request**, not a guarantee. A dependable system therefore checks:
+
+- **Every number in the answer should appear in a tool result** of the same run. A number that does not was invented.
+- **The tools used should make sense** for the question. A ranking question answered without the ranking tool is suspicious.
+- **The answer should follow the rules**: dates given, no advice, the required source line.
+
+## 7.4 Structured answers
+
+When another program will use the agent’s answer, such as an alert or a dashboard, the agent can return **fields** instead of sentences, exactly like structured output in Module 4. The schema is given to the agent once; every answer then arrives as a checked object. The model still decides the steps; the shape of the result is fixed by us.
+
+## 7.5 Ready-made tools and other services
+
+Not every tool has to be written by hand. LangChain offers **ready-made tools** for common services, and **toolkits** that group several tools behind one sign-in. To the agent they are no different from ours: a name, a description and arguments.
+
+| Tool | Kind | Comes from |
+|----|----|----|
+| Web search | Read | A ready-made LangChain tool |
+| Gmail: draft, send, search, read | Draft: harmless; **send: action** | A ready-made toolkit |
+| Image generation | Action (it costs credits) | Our own tool around the provider’s Python package |
+
+Three principles apply to every outside service:
+
+- **Pick, don’t take everything.** The Gmail toolkit can also search and read the mailbox. An agent that only needs to draft and send gets only those two: fewer wrong choices, and no access it does not need.
+- **Any API can become a tool.** When a service has a Python package but no ready-made tool, wrap it with a clear description, and return something the model can use, such as where a file was saved.
+- **Outside information has its own rules.** Web results are not verified data: use them for news, name the source, and keep numbers coming from the trusted source. Images, drafts and e-mails are made only when the user asks.
+
+## 7.6 Approving actions before they run
+
+Reading data is safe; writing and sending are not. An e-mail cannot be unsent. **Human-in-the-loop** approval means the agent **pauses** before an action tool runs, shows exactly what it wants to do, and continues only after a person decides:
+
+| Decision | Effect |
+|----|----|
+| **Approve** | The action runs as proposed |
+| **Edit** | The action runs with changes, such as a corrected recipient or subject |
+| **Reject**, with a reason | The action does not run; the agent reads the reason and continues |
+
+Two things make this work. The list of tools that pause is explicit (here, saving a note and sending an e-mail), so reading, searching and drafting run without interruption. And the paused run is kept by a **checkpointer**, under a conversation identifier, so it can continue after the person has decided. Approval is useful only if the reviewer sees the real details (the recipient, the text, the file name) and has time to read them; a habit of approving everything is not a control.
+
+## 7.7 Memory and limits
+
+The checkpointer is also the agent’s **short-term memory**: every turn in the same conversation is kept, so a follow-up such as “Which bank did I just ask about?” works. A new conversation starts empty, and a memory kept in the program disappears when the program stops. Long-term memory (Module 1) needs a database and rules about what may be kept.
+
+| Risk | Control |
+|----|----|
+| An invented number | A rule in the system prompt; check numbers against the tool results |
+| An action nobody wanted | Approval for action tools; read and action tools kept apart |
+| An e-mail to the wrong person | Approval on send; the reviewer reads the recipient and the text |
+| Facts from the open web | Web search for news only, with the source named |
+| Too many steps, too much cost | Few, well-described tools; a step limit |
+| Advice | Forbidden in the system prompt; the text is read before it is sent |
+
+**Scheduler or agent?** Both “run things automatically”, so they are easy to confuse. The scheduler decides **when** fixed code runs; the agent decides **what** data to get next. Module 9 combines them.
+
+<Info>
+**Questions to think about**
+
+- Write the system prompt for an agent in your own area. Which rule is most likely to be broken, and how would you check it?
+- Which outside services would your agent need? For each, which of its tools would you give the agent, and which would you leave out?
+- Which of your agent’s actions should pause for a person, and what must that person see to make a real decision?
+</Info>

@@ -1,0 +1,100 @@
+---
+title: "Module 8 worked example"
+description: "An agent with tools from the Sectors MCP server."
+sidebarTitle: "Worked example"
+icon: "play"
+---
+
+
+Connects to the Sectors MCP server (our code is the MCP client), lists its tools,
+keeps three of them, and gives them to an agent made with create_agent.
+
+## Run it
+
+From the course folder, with the `.venv` activated:
+
+```bash
+python day2/examples/m8_example.py
+```
+
+The script prints lines like these:
+
+```text
+🔌 Sectors MCP server: 66 tools, using 3
+❓ Which bank stocks gained most over the last 7 days?
+🔧 Tools used: ['fetch-companies-top-changes']
+💬 ...
+```
+
+## The script
+
+```python m8_example.py
+"""
+Module 8 example: an agent with tools from the Sectors MCP server.
+
+What it does:
+    Connects to the Sectors MCP server (our code is the MCP client), lists its tools,
+    keeps three of them, and gives them to an agent made with create_agent.
+
+How to run (from the project root; about 4 model calls):
+    python day2/examples/m8_example.py
+
+Expected output:
+    🔌 Sectors MCP server: 66 tools, using 3
+    ❓ Which bank stocks gained most over the last 7 days?
+    🔧 Tools used: ['fetch-companies-top-changes']
+    💬 ...
+"""
+
+import os
+import asyncio
+from datetime import date
+from dotenv import load_dotenv
+from langchain.mcp import MCPAdapter
+from langchain.agents import create_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+load_dotenv()
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+SELECTED = ["fetch-company-report", "fetch-daily-price", "fetch-companies-top-changes"]
+
+SYSTEM_PROMPT = f"""You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Today is {date.today()}. The MCP tools take explicit dates: work them out from today.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Never give buy, sell or hold advice."""
+
+QUESTIONS = [
+    "Which bank stocks gained most over the last 7 days?",
+    "How did NISP trade between 14 and 23 October 2026?",
+]
+
+
+async def main():
+    transport = StreamableHttpTransport(
+        url=os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
+        headers={"Authorization": os.getenv("SECTORS_API_KEY")},
+    )
+
+    async with MCPAdapter(Client(transport)) as sector:
+        tools = await sector.list_tools()
+        mcp_tools = [t for t in tools if t.name in SELECTED]
+        print(f"🔌 Sectors MCP server: {len(tools)} tools, using {len(mcp_tools)}")
+
+        agent = create_agent(model=llm, tools=mcp_tools, system_prompt=SYSTEM_PROMPT)
+
+        for question in QUESTIONS:
+            result = await agent.ainvoke({"messages": [{"role": "user", "content": question}]})
+            used = [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+            print(f"\n❓ {question}\n🔧 Tools used: {used}\n💬 {result['messages'][-1].text}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```

@@ -1,0 +1,62 @@
+---
+title: "Day 1 overview"
+description: "AI systems overview and building a data and automation layer (Modules 1 to 5)."
+sidebarTitle: "Overview"
+icon: "map"
+---
+
+## Background
+
+This masterclass builds an AI system end to end: the **IDX Market Assistant**, which answers relationship managers’ questions using public Indonesian stock data from **Sectors**. The market data is only the running example; the way the system is designed applies to any data and any use case.
+
+Over Day 1 and Day 2, participants write every layer of the system themselves, with GitHub Copilot as an aid rather than the author:
+
+1.  **Module 1, AI Systems and Agents Overview:** what an LLM can and cannot do, and a way of thinking about any AI system in three stages: collect the data, connect it to the model, decide the actions.
+2.  **Module 2, Data Layer:** pulling company, price and news data from the Sectors API, one public web page and SQLite, and handling errors.
+3.  **Module 3, Automation:** reusable functions, a combined daily report, scheduling, and runs that survive failures.
+4.  **Module 4, First LLM Call:** the report goes into the prompt; a digest and structured output come back.
+5.  **Module 5, RAG:** questions answered from the news saved in Module 2.
+6.  **Day 2 (Modules 6 to 9):** tools, an agent built with `create_agent`, MCP, and a scheduled agent.
+
+The two days follow one idea, the **control ladder**: who decides which data the model sees, and when.
+
+<Frame caption="The control ladder: control over the data moves from our code, to the question, to the LLM">
+  <img src="/images/day1/control-ladder.png" alt="The control ladder: control over the data moves from our code, to the question, to the LLM" />
+</Frame>
+
+**Day 1 in one line: we tell the LLM what the data is. Day 2 in one line: the LLM asks for the data it needs.**
+
+## Training objectives
+
+By the end of Day 1, participants are able to:
+
+- Explain where an LLM fits in a system, its advanced capabilities (retrieval through live API calls, tool use, structured output, multi-agent coordination, long-term memory, skills), and how chatbots, assistants and action-capable agents differ
+- Apply human-in-the-loop and data-security practices to an AI project
+- Pull company, market and news data from the Sectors API, one public web page and SQLite, and handle timeouts, rate limits, wrong keys, missing tickers, missing fields and unavailable sources
+- Save retrieved data as JSON, CSV, Markdown, TXT and SQLite, and structure it as a reusable module
+- Combine company overview and trading data into one report, schedule it with APScheduler, and keep a failed ticker from stopping the run
+- Call an LLM from Python with LangChain, put a report in the prompt, and get validated structured output with Pydantic
+- Build a RAG pipeline (split, embed, store, retrieve, prompt) over saved news, with citations and a keyword fallback
+
+## Course data and tools
+
+**Data.** The running example uses public market data from **Sectors** (`https://api.sectors.app/v2`) about four Indonesian banks: BBCA, BBRI, BMRI and NISP. It is simply a realistic data source to build on; the same design applies to any other data. Saved copies of real responses are in `data/sample/`, for when the API cannot be reached.
+
+**Tools and files.**
+
+| Area | Tool |
+|----|----|
+| Language and editor | Python 3.11+, VS Code with Jupyter, GitHub Copilot (an aid for exercises; off for knowledge checks) |
+| Data | `requests`, `beautifulsoup4`, `sqlite3`, `pandas` |
+| Scheduling | `APScheduler` 3.x |
+| LLM | Gemini, through `langchain-google-genai` (`ChatGoogleGenerativeAI`) |
+| RAG | `langchain-text-splitters`, Gemini embeddings (`GoogleGenerativeAIEmbeddings`), `InMemoryVectorStore` |
+
+| Folder | Holds |
+|----|----|
+| `day1/notebooks/` | One notebook per module (M2 to M5): recap, worked examples, knowledge checks |
+| `day1/examples/` | One runnable end-to-end script per module; each file holds all the functions it uses |
+| `day1/exercises/` | The exercise for each module, with a self-check |
+| `data/sample/` | Cached real API responses |
+
+**How to read this book.** This coursebook explains the ideas and the reasoning behind each module: why the system is built this way, and how to think about your own. The code you run is in the notebooks, examples and exercises; the few code lines shown here only illustrate an idea. Each module ends with *Questions to think about*, for discussion or reflection. Numbers are shown with thousands separators; Python prints `26918194597920` where this book writes IDR 26.9 trillion.

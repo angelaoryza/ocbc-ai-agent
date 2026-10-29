@@ -1,0 +1,120 @@
+---
+title: "Module 4 worked example"
+description: "From the daily report to an AI-written digest."
+sidebarTitle: "Worked example"
+icon: "play"
+---
+
+
+Reads today's report from Module 3 (run  python day1/examples/m3_example.py --now  first),
+fills a prompt template with it, and asks Gemini for a morning digest twice:
+as text (for people) and as structured output (for code). Saves both in output/digests/.
+
+## Run it
+
+From the course folder, with the `.venv` activated:
+
+```bash
+python day1/examples/m4_example.py
+```
+
+The script prints lines like these:
+
+```text
+📝 Digest:
+Indonesian bank stocks ... BBCA closed at 5,025 on 2026-10-23 ...
+📦 Structured:
+BBCA 5025 down | ...
+✅ Saved output/digests/digest_<date>.md and .json
+```
+
+## The script
+
+```python m4_example.py
+"""
+Module 4 example: from the daily report to an AI-written digest.
+
+What it does:
+    Reads today's report from Module 3 (run  python day1/examples/m3_example.py --now  first),
+    fills a prompt template with it, and asks Gemini for a morning digest twice:
+    as text (for people) and as structured output (for code). Saves both in output/digests/.
+
+How to run (from the project root; 2 model calls):
+    python day1/examples/m4_example.py
+
+Expected output:
+    📝 Digest:
+    Indonesian bank stocks ... BBCA closed at 5,025 on 2026-10-23 ...
+    📦 Structured:
+    BBCA 5025 down | ...
+    ✅ Saved output/digests/digest_<date>.md and .json
+"""
+
+import os
+import json
+from datetime import date
+from typing import Literal
+from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+SYSTEM_PROMPT = """You write a short morning digest of Indonesian bank stocks for relationship managers.
+Use only the facts in the report. Quote numbers exactly, with their dates.
+Never give buy, sell or hold advice, price targets or predictions."""
+
+
+class BankDigest(BaseModel):
+    ticker: str
+    last_close: int
+    trend: Literal["up", "down", "flat"] = Field(description="Direction of the 10-day change")
+    summary: str = Field(description="One factual sentence from the report")
+
+
+class MorningDigest(BaseModel):
+    headline: str
+    banks: list[BankDigest]
+
+
+# One template, filled with a new report every morning
+DIGEST_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "<report>\n{report}\n</report>\n\n"
+              "Write the digest: one headline sentence, then one short sentence per bank."),
+])
+
+
+def main():
+    report_path = f"output/reports/report_{date.today()}.md"
+    if not os.path.exists(report_path):
+        print("❌ No report for today. Run  python day1/examples/m3_example.py --now  first.")
+        return
+    with open(report_path, encoding="utf-8") as f:
+        report = f.read()
+
+    digest = (DIGEST_PROMPT | llm).invoke({"report": report}).text
+    print("📝 Digest:\n" + digest)
+
+    result = (DIGEST_PROMPT | llm.with_structured_output(MorningDigest)).invoke({"report": report})
+    print("\n📦 Structured:")
+    for bank in result.banks:
+        print(bank.ticker, bank.last_close, bank.trend, "|", bank.summary)
+
+    os.makedirs("output/digests", exist_ok=True)
+    with open(f"output/digests/digest_{date.today()}.md", "w", encoding="utf-8") as f:
+        f.write(digest + "\n\n*AI-generated from Sectors data. Not investment advice.*\n")
+    with open(f"output/digests/digest_{date.today()}.json", "w", encoding="utf-8") as f:
+        json.dump(result.model_dump(), f, indent=2)
+    print(f"\n✅ Saved output/digests/digest_{date.today()}.md and .json")
+
+
+if __name__ == "__main__":
+    main()
+```

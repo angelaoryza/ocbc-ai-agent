@@ -1,0 +1,29 @@
+---
+title: "Course data"
+description: "Saved real Sectors responses (25 October 2026), used when Sectors is unreachable."
+icon: "folder-open"
+---
+
+The running example uses public market data from **Sectors** (`https://api.sectors.app/v2`) about four Indonesian banks: BBCA, BBRI, BMRI and NISP. So that everyone gets the same numbers, the notebooks use prices for one fixed month: **24 September to 23 October 2026**.
+
+`data/sample/` holds saved copies of real Sectors responses from 25 October 2026, for when the API cannot be reached.
+
+| File | What it is | Used in |
+|---|---|---|
+| `report_<TICKER>.json` | The company report of each bank | Module 2 example (fallback), Module 4 notebook |
+| `daily_<TICKER>.json` | Daily prices of each bank | Module 2 notebook, example and exercise (fallback), Module 4 notebook |
+| `news_<TICKER>.json` | The latest news about each bank, 20 articles per bank | Module 2 example (fallback), Module 5, 6 and 8 notebooks |
+| `list_of_banks_in_indonesia.html` | The Wikipedia page *List of banks in Indonesia* | Module 2 notebook, section 2.4 |
+| `top_banks_market_cap.json` | A ranking of banks by market cap | Reference copy |
+| `top_movers_banks.json` | The banks that rose and fell most | Reference copy |
+| `mcp_tools.json` | The tool list of the Sectors MCP server | Reference copy |
+
+## Created while you work
+
+| Path | Created by | Used by |
+|---|---|---|
+| `data/news/` | Module 2 | Modules 5 to 9 |
+| `data/market.db` | Module 2 (SQLite) | |
+| `output/` | The examples and exercises | |
+
+Module 2 saves the news that Modules 5 to 9 use, and Module 3 writes the report that Module 4 reads. See [Order of work](/getting-started/folder-map#order-of-work) if you start later in the course.

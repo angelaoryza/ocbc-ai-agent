@@ -1,0 +1,171 @@
+/* Algoritma design system on Mintlify.
+   Only what docs.json cannot do. Mintlify's own CSS sits in @layer, so these
+   unlayered rules win without !important. Selectors marked "internal" depend on
+   Mintlify class names rather than documented hooks: check them first if a style breaks. */
+
+@import url("https://fonts.googleapis.com/css2?family=Average&family=Ubuntu+Sans:wght@100..800&family=Ubuntu+Sans+Mono:wght@400..700&display=swap");
+
+:root {
+  --alg-text: #001017;
+  --alg-muted: #3e526a;
+  --alg-card: #fffdf8;
+  --alg-wash: #f0e8d4;
+  --alg-border: #d6cbb3;
+  --alg-link: #28568a;
+  --alg-gold: #c9a96d;
+  --alg-focus: #28568a;
+
+  /* docs.json fonts.heading is ignored by mint 4.2 (fonts.family wins for both), so set it here */
+  --font-family-headings-custom: "Average", Georgia, serif;
+  --font-family-mono-custom: "Ubuntu Sans Mono", ui-monospace, monospace;
+}
+
+html.dark {
+  --alg-text: #f0e8d4;
+  --alg-muted: rgb(240 232 212 / 0.78);
+  --alg-card: #0d1921;
+  --alg-wash: #22303d;
+  --alg-border: #23384b;
+  --alg-link: #acc9e3;
+  --alg-focus: #7f9bb1; /* Steel: focus rings in dark mode only */
+}
+
+/* ── Type ─────────────────────────────────────────────────────────────────── */
+
+.prose,
+#content-area {
+  color: var(--alg-text);
+}
+
+/* Average is never bold or italic */
+h1, h2, h3, h4, #page-title {
+  font-weight: 400;
+  font-style: normal;
+  color: var(--alg-text);
+}
+
+code, pre, kbd {
+  font-family: var(--font-family-mono-custom);
+}
+
+.prose strong,
+.prose blockquote,
+.prose th,
+.sidebar-group-header,
+.nav-tabs-item[data-active] {
+  color: var(--alg-text);
+}
+
+.prose a.link {
+  color: var(--alg-link);
+  border-bottom-color: currentColor;
+}
+
+/* Headings set in Ubuntu Sans: 680. Labels: 500 */
+.sidebar-group-header,
+.prose th,
+[data-component-part="card-title"],
+[data-component-part="step-title"] {
+  font-family: "Ubuntu Sans", sans-serif;
+  font-weight: 680;
+  font-variation-settings: "wght" 680;
+  font-style: normal;
+}
+
+.nav-tabs-item,
+.navbar-link,
+#sidebar-content li a {
+  font-weight: 500;
+}
+
+/* Muted labels: Slate on paper, Cream at 78% on Midnight (both above 4.5:1) */
+.navbar-link,
+.navbar-link a,
+.toc-item a,
+.nav-tabs-item:not([data-active]),
+#sidebar-content li:not([data-active]) > a,
+#footer,
+#footer a {
+  color: var(--alg-muted);
+}
+
+/* ── Surfaces ─────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--alg-card);
+  border-color: var(--alg-border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.code-block {
+  border-color: var(--alg-border);
+  border-radius: 12px;
+}
+
+.prose :not(pre) > code {
+  background: var(--alg-wash);
+  color: var(--alg-text);
+  border: 0;
+  border-radius: 6px;
+}
+
+#page-context-menu,
+#page-context-menu-button {
+  border-radius: 10px;
+}
+
+[data-search-item="trigger"],
+#search-input {
+  border-radius: 8px;
+}
+
+/* Gold, used once: the active top tab indicator. Internal: the indicator is an unnamed div */
+.nav-tabs-item[data-active] > div {
+  height: 3px;
+  background: var(--alg-gold);
+}
+
+:focus-visible {
+  outline: 2px solid var(--alg-focus);
+  outline-offset: 2px;
+}
+
+/* ── Callouts, retinted with the palette ──────────────────────────────────── */
+
+.callout {
+  border-radius: 12px;
+  border-color: var(--alg-border);
+}
+
+.callout [data-component-part="callout-content"] {
+  color: var(--alg-text);
+}
+
+.callout [data-component-part="callout-icon"] svg {
+  color: var(--alg-link);
+  fill: currentColor;
+}
+
+[data-callout-type="note"],
+[data-callout-type="tip"],
+[data-callout-type="check"] {
+  background: var(--alg-card);
+}
+
+[data-callout-type="info"],
+[data-callout-type="warning"],
+[data-callout-type="danger"] {
+  background: var(--alg-wash);
+}
+
+/* A warning stands apart by a stronger border and icon, not by a new colour */
+[data-callout-type="warning"],
+[data-callout-type="danger"] {
+  border-color: var(--alg-muted);
+}
+
+[data-callout-type="warning"] [data-component-part="callout-icon"] svg,
+[data-callout-type="danger"] [data-component-part="callout-icon"] svg {
+  color: var(--alg-text);
+}

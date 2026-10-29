@@ -1,0 +1,99 @@
+---
+title: "Module 2: Building an automated data retrieval layer"
+description: "The data retrieval layer: data the system can trust, from APIs, web pages and databases."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Module 1 ended with a claim: the quality of an AI system is decided mostly by the data around the model. Before any model is called, the system needs data it can **trust**: current, in a known shape, with a known source and date, and still there tomorrow morning when nobody is watching.
+
+The part of the system that delivers this is the **data retrieval layer**. Its job is to hide the messy outside world (different services, different formats, servers that are slow or down) behind a few simple, dependable functions. Every later layer, the report, the prompt, the search, the agent’s tools, reads clean records from this layer and never touches a raw response.
+
+## 2.1 Data comes first
+
+It is tempting to start an AI project with the model. Experienced builders start with the data, for three reasons.
+
+- **The data sets the limits of the system.** A system can only answer questions it has data for. Listing the questions the system must answer, and the data each one needs, is the first design step.
+- **The model cannot tell good data from bad.** Give it yesterday’s numbers labelled as today’s, or a report with one item silently missing, and it will write a confident answer about both. Only the data layer can make the model’s trust deserved.
+- **Most errors are data errors.** A wrong AI answer usually comes from upstream: a stale copy, a missing field read as zero, a name written two ways, a unit misread.
+
+Think of the data layer as a **promise** to the rest of the system: *“When you ask me for something, I will give you records in this shape, from this source, as of this date, or I will tell you clearly that I could not.”*
+
+In this course the data is about four Indonesian banks: company profiles, daily prices and news, from **Sectors**. Treat it as an example. The same thinking applies to any data a system might use: product terms, policy documents, internal reports.
+
+## 2.2 Where data lives, and how to reach it
+
+Data reaches the system from three kinds of source, each with its own strengths, costs and rules.
+
+**APIs.** An **API** (application programming interface) is a service built for programs to ask questions and get structured answers. A request names **where** (the address), **what exactly** (parameters), **who is asking** (a key) and **how long to wait** (a timeout). The answer is a status code and, if all went well, data in **JSON**, which becomes Python lists and dictionaries:
+
+```python
+response = requests.get(f"{BASE_URL}/daily/NISP/", headers={"Authorization": key},
+                        params={"start": "2026-10-01", "end": "2026-10-23"}, timeout=30)
+```
+
+APIs come with rules: calls may cost **credits**, there are **limits** on how much one call returns, and APIs have **versions** that can be retired. Good code respects all three.
+
+**Public web pages.** Some information exists only on pages written for people. **Web scraping** downloads the page and extracts the parts you need. It works, but a page’s layout is not a promise: a redesign can break the code overnight. And every request from a bank’s system carries the bank’s name, so scrape responsibly: respect the site’s `robots.txt`, identify your program honestly, fetch slowly, respect the content’s licence, and scrape only what no API offers.
+
+**Databases.** A database holds what has already been collected: the system’s memory of the past. It keeps history the source no longer returns and answers questions without another paid call. This course uses **SQLite**, a complete database in a single file.
+
+**Choosing a source.** When several sources could provide the same fact, compare them on reliability (will it answer tomorrow, in the same shape?), freshness, structure, cost and limits, and permission (licence, terms, the bank’s vendor rules). The usual answer: prefer an official API, use a web page only for what no API provides, and keep a database for history.
+
+**Keys are passwords.** An API key gives access to a paid account. It lives in a `.env` file that is never shared or committed, and code reads it at run time. A key printed in a notebook or pasted into a prompt should be treated as leaked.
+
+## 2.3 From raw response to records you can trust
+
+A raw response is shaped for the service that sent it. **Parsing** turns it into Python values; **structuring** decides what one clean record looks like for *our* system, so that later layers need to know nothing about the source.
+
+| A trustworthy record has… | Meaning |
+|----|----|
+| **A consistent shape** | The same fields every time; a missing value is `None`, never a missing field |
+| **One identity format** | The same thing is always written the same way (`NISP`, never `nisp` or `NISP.JK`) |
+| **Raw units** | Store the number as it is; format it only for people |
+| **Provenance** | Where it came from and as of when, and whether it is live or a saved copy |
+| **Only what is used** | The fields a later layer needs, not the whole response |
+
+Provenance is the property most often forgotten and most often needed. When someone asks “is this today’s number?”, the system can only answer if the record carried its date and source from the moment it was collected.
+
+**Save for the next reader.** JSON suits code, CSV suits spreadsheets, Markdown suits people and prompts, plain text suits logs, and a database suits history that grows and is queried. Saving also saves money (data already paid for is not fetched again) and gives the system something to fall back on when a source is down. The news saved in this module is the collection that Module 5 searches.
+
+## 2.4 When data goes wrong
+
+A system that runs every day will meet every kind of failure eventually. The data layer’s job is not to prevent failures but to **respond to each one correctly**, which starts with telling them apart:
+
+| Kind | Examples | Right response |
+|----|----|----|
+| **Temporary** | Timeout, server error, too many requests | Wait and try again, a few times, with growing pauses |
+| **Permanent** | Wrong key, unknown item, invalid parameter | Stop, and say clearly what to fix |
+| **Incomplete** | A missing field, an empty result | Keep what is there, mark what is missing, never fill the gap with a guess |
+| **Silent** | Old data presented as new; a unit misread; a name written two ways | Prevented by provenance and consistent records (2.3) |
+
+Three practices follow.
+
+- **Retry temporary failures, with backoff.** Double the pause each time (1, 2, 4 seconds), so a struggling service can recover. Three attempts is a sensible default.
+- **Fall back to a saved copy, and say so.** A labelled old number is useful; an unlabelled one is dangerous. Never fall back on a permanent failure: cached data for an item that does not exist answers a question nobody asked.
+- **Make missing data visible.** The worst outcome is a silent failure: a report that quietly leaves something out, or an answer that fills a gap with zero. The rule for every layer: **say what is missing; never invent it.**
+
+An unattended data layer also **leaves a trace**: one log line per run saying what was fetched and what failed, never the keys.
+
+## 2.5 Ready for an automated, AI-powered flow
+
+A data layer is ready for automation when another program can use it without anyone sitting in front of it:
+
+- **Small functions, one per source**, so a scheduler, a report or an agent can call exactly the piece it needs.
+- **One place for the details of the service** (address, key, timeout, retries), so a change at the provider is fixed once.
+- **Parameters instead of leftover variables**, so the function works the same whoever calls it.
+- **Clear results and clear failures**, so the caller can decide to carry on, fall back or stop.
+
+**Notebook or script?** A notebook is the right place to *explore*. It is the wrong place for code that must run unattended: it keeps hidden state, needs a person to press Run, and is awkward for other programs to use. So each module explores in a notebook and keeps the finished functions in a `.py` file.
+
+**The same functions, three futures.** Module 3 calls them on a schedule to build a report; Module 4 gives that report to the model; on Day 2 they become **tools** the model can choose to call. In Module 2 we are on the first rung of the control ladder: **our code decides which data is fetched**.
+
+<Info>
+**Questions to think about**
+
+- For a system in your own area, list the five questions it must answer. What data does each need, and how fresh must it be?
+- Which of those sources would you trust least, and what would the system say when it is unavailable?
+- What is one way your data could be wrong *without* any error appearing? How would provenance help you notice?
+</Info>

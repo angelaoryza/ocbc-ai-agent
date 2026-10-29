@@ -1,0 +1,95 @@
+---
+title: "Module 6: Tools for an AI-based system"
+description: "Tools let the model ask for the data it needs: the model requests, our code executes."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+On Day 1 the model was always *told* what the data was: our code chose the report, or the question chose the news. That works when the questions are known in advance. It breaks when they are not. *“Which bank has the highest return on equity, and how did it close?”* needs a ranking first and then one company’s price, and no fixed piece of code can prepare the data for every question a person might ask.
+
+Module 6 gives the model a new ability: to **ask** for the data it needs. The system offers it a set of **tools**, described in words, and for each question the model requests the one that fits. This is the first step of stage 3 in the Module 1 framework, and the moment the model starts to decide which data it sees. The goal of the module is to understand what a tool really is, how much control we keep, and how to design and choose tools so that the model uses them well.
+
+## 6.1 From being told to asking
+
+|  | Day 1: the model is told | Day 2: the model asks |
+|----|----|----|
+| Who chooses the data | Our code, or the question through search | The model, from a list of tools |
+| Works well when | The questions and their data are known in advance | The data a question needs depends on the question |
+| Cost per answer | Fixed and low | Grows with the steps the model takes |
+| Predictability | High | Lower: two runs may take different routes |
+
+Tools are not an upgrade to use everywhere. For a fixed job, such as the 07:30 report, our code knows exactly which data is needed and should simply fetch it. Tools earn their place when people ask open questions.
+
+## 6.2 What a tool is
+
+A **tool** is an ordinary function plus a description that a model can read. It has three parts:
+
+| Part | Tells the model | Comes from |
+|----|----|----|
+| **Name** | What to call it | The function name |
+| **Description** | **Whether** and **when** to use it | The docstring |
+| **Argument schema** | **What** to send: names, types, allowed values | The type hints and defaults |
+
+```python
+@tool
+def get_company_overview(ticker: str) -> dict:
+    """Get the profile and latest price of ONE listed company.
+    Use it for questions about a single company, e.g. "How did NISP close?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BBCA.
+    """
+```
+
+Marking a function as a tool does not give the model the power to run it, and it does not search or store anything. It only attaches a name, a description and a schema to a function our code still controls.
+
+## 6.3 How tool calling works: the model requests, our code executes
+
+A tool call is a short exchange between the model and our program:
+
+1.  Our code sends the question **and the tool descriptions** to the model.
+2.  The model replies with either an answer or a **request**: a tool name and arguments, such as `get_company_overview(ticker="NISP")`. It runs nothing.
+3.  **Our code** decides whether to run the function, runs it, and sends the result back, linked to the request.
+4.  The model reads the result and writes the answer, or asks for more.
+
+The gap between step 2 and step 3 is where all control lives. Because every request passes through our code, the system can check the arguments, refuse a tool, limit how often it runs, log it, or ask a person first (Module 7). The model never touches the data source, the key or the network: it only asks.
+
+## 6.4 The description decides
+
+The model knows nothing about a tool except its name, description and schema. It cannot read the code. A vague description leads to the wrong tool, to no tool at all (the model answers from memory instead), or to wrong arguments.
+
+| A good description says | For example |
+|----|----|
+| What it returns | “Rank listed banks by a metric, highest first.” |
+| When to use it | “For ranking questions such as ‘Which banks are the largest?’” |
+| What each argument means, with allowed values | “metric: one of market_cap, roe_ttm, pe_ttm, pb_mrq, yield_ttm” |
+| Formats and units | “ticker: 4-letter code, e.g. BMRI” |
+| What it is **not** for | “Does not return prices: use the price tools for numbers.” |
+
+Allowed values matter most: a model cannot guess the internal name of a field. When a tool keeps being misused, fix the description before changing anything else. Writing a description is closer to writing a job description for a new colleague than to writing code.
+
+## 6.5 Choosing the tools an agent needs
+
+Every tool’s description is sent with every call. More tools mean a longer, costlier prompt and more similar options to confuse. Good tool sets are **small and distinct**, usually 3 to 5 tools, each with a clear purpose.
+
+Two kinds of tool need to be kept apart:
+
+| Kind | Does | Example | Needs approval? |
+|----|----|----|----|
+| **Read** | Fetches data and changes nothing | Get a company profile, rank banks, search the news | No |
+| **Action** | Changes something: a file, an email, a record | Save a note, send an email | Yes (Module 7) |
+
+Three questions help choose:
+
+1.  **Which questions must the system answer?** Map each to a tool. A question with no tool will be answered from memory, or not at all.
+2.  **Do two tools overlap?** Merge them, or sharpen their descriptions so the model can tell them apart.
+3.  **Does any tool act?** Then it needs approval, or it should not be in the set. A read-only assistant gets read tools only.
+
+**Existing capabilities become tools.** The news search built in Module 5 becomes a tool too. Before, every question triggered a search; as a tool, the model searches only when a question needs reasons from the news, writes its own search query, and combines the result with price or ranking tools in the same answer. Any function of the system, a retriever included, can be offered to the model this way.
+
+<Info>
+**Questions to think about**
+
+- Take a question a colleague asks often. Which tools would a model need to answer it, and in which order?
+- Write the description for one of those tools. What would a model get wrong if you left out the allowed values?
+- Which tools in your system would be actions? What would go wrong if the model called one at the wrong time?
+</Info>

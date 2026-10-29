@@ -1,0 +1,126 @@
+---
+title: "Module 6 exercise"
+description: "Two new Sectors tools, and the round trip as a function."
+sidebarTitle: "Exercise"
+icon: "pen-to-square"
+---
+
+
+## Your tasks
+
+From the top of the file:
+
+```text
+Module 6 Exercise: two new Sectors tools, and the round trip as a function.
+
+Write:
+    1. get_top_movers(period, n)   tool: the banks that rose and fell most (/companies/top-changes/)
+    2. get_valuation(ticker)       tool: the valuation section of a company report
+    3. ask(question, tools)        one round trip: the LLM asks, our code runs the tools, the LLM answers
+
+The docstring is what the LLM reads: say what the tool returns, when to use it, and what each
+argument means. Then run from the project root:
+    python day2/exercises/m6_exercise.py
+
+Copilot is allowed. The checks use about 4 model calls.
+```
+
+## Run it
+
+Replace each `TODO`, then run from the course folder:
+
+```bash
+python day2/exercises/m6_exercise.py
+```
+
+## The checks
+
+The block at the bottom of the file tests your work. Do not edit it: each `✅` line means one part is done.
+
+```python m6_exercise.py (checks)
+# ── Check your work (do not edit) ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    for t in (get_top_movers, get_valuation):
+        assert hasattr(t, "invoke"), f"Add @tool above {t.__name__}"
+        assert len(t.description) > 60, f"Write a full docstring for {t.name}: the LLM reads it"
+
+    movers = get_top_movers.invoke({"period": "7d", "n": 3})
+    assert "top_gainers" in movers and "top_losers" in movers, "get_top_movers should return gainers and losers"
+    print("✅ get_top_movers:", [m["symbol"] for m in movers["top_gainers"]["7d"]])
+
+    valuation = get_valuation.invoke({"ticker": "BBCA"})
+    assert "valuation" in valuation, "get_valuation should ask for the valuation section"
+    print("✅ get_valuation:", list(valuation["valuation"])[:3])
+
+    tools = [get_company_overview, get_top_movers, get_valuation]
+    answer, used = ask("Which banks fell the most over the last 7 days?", tools)
+    assert "get_top_movers" in used, f"The LLM used {used}. Improve the get_top_movers docstring."
+    assert isinstance(answer, str) and answer, "ask should return the final answer text"
+    print("✅ ask (movers):", answer[:120].replace("\n", " "), "...")
+
+    answer, used = ask("What is the forward P/E of BBCA?", tools)
+    assert "get_valuation" in used, f"The LLM used {used}. Improve the get_valuation docstring."
+    print("✅ ask (valuation):", answer[:120].replace("\n", " "), "...")
+
+    print("\n🎉 Module 6 exercise done!")
+```
+
+## Starter code
+
+Open `day2/exercises/m6_exercise.py` and fill in the `TODO`s.
+
+```python m6_exercise.py
+import os
+import requests
+from dotenv import load_dotenv
+from langchain.tools import tool
+from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+load_dotenv()
+
+BASE_URL = "https://api.sectors.app/v2"
+HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+
+@tool
+def get_company_overview(ticker: str) -> dict:
+    """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
+    Use it for questions about a single company, e.g. "How did NISP close?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
+    """
+    response = requests.get(f"{BASE_URL}/company/report/{ticker}/", headers=HEADERS,
+                            params={"sections": "overview"}, timeout=30)
+    return response.json()
+
+
+# TODO 1: the tool get_top_movers(period: str = "1d", n: int = 5) -> dict
+# Endpoint: f"{BASE_URL}/companies/top-changes/" with params
+#   {"sub_sector": "banks", "periods": period, "classifications": "top_gainers,top_losers", "n_stock": n}
+# Allowed periods: 1d, 7d, 14d, 30d, 365d. Say so in the docstring.
+def get_top_movers(period: str = "1d", n: int = 5) -> dict:
+    pass  # TODO
+
+
+# TODO 2: the tool get_valuation(ticker: str) -> dict
+# Endpoint: f"{BASE_URL}/company/report/{ticker}/" with params {"sections": "valuation"}
+def get_valuation(ticker: str) -> dict:
+    pass  # TODO
+
+
+def ask(question, tools):
+    """One round trip. Return (answer_text, names_of_the_tools_called).
+
+    1. Bind the tools and send [HumanMessage(question)].
+    2. For each tool call: run the tool with its args, add a ToolMessage(content=str(result), tool_call_id=call["id"]).
+    3. Send the messages again and return the final text and the tool names.
+    """
+    pass  # TODO
+```

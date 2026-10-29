@@ -1,0 +1,146 @@
+---
+title: "Module 7 exercise"
+description: "Build the agent with create_agent, and approve actions before they run."
+sidebarTitle: "Exercise"
+icon: "pen-to-square"
+---
+
+
+## Your tasks
+
+From the top of the file:
+
+```text
+Module 7 Exercise: build the agent with create_agent, and approve actions before they run.
+
+Write two things:
+    1. agent           create_agent with the 4 tools, the system prompt, approval for save_note,
+                       and an InMemorySaver checkpointer
+    2. ask(...)        ask a question; when the agent pauses, approve or reject, then resume
+
+Run from the project root:
+    python day2/exercises/m7_exercise.py
+
+Copilot is allowed. The checks use about 6 model calls.
+```
+
+## Run it
+
+Replace each `TODO`, then run from the course folder:
+
+```bash
+python day2/exercises/m7_exercise.py
+```
+
+## The checks
+
+The block at the bottom of the file tests your work. Do not edit it: each `✅` line means one part is done.
+
+```python m7_exercise.py (checks)
+# ── Check your work (do not edit) ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    assert agent is not None, "Create the agent (TODO 1)"
+
+    result = ask("Which bank has the highest return on equity, and what was its last close?", "t1", approve=True)
+    used = [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+    assert "get_top_banks" in used, f"The agent should use the ranking tool. It used {used}"
+    print("✅ ranking question:", result["messages"][-1].text[:120].replace("\n", " "), "...")
+
+    for f in ("rejected.txt", "approved.txt"):
+        if os.path.exists(f"output/notes/{f}"):
+            os.remove(f"output/notes/{f}")
+
+    ask("Save a note called rejected.txt that says: test", "t2", approve=False)
+    assert not os.path.exists("output/notes/rejected.txt"), "A rejected save must not write the file"
+    print("✅ rejected: no file written")
+
+    ask("Save a note called approved.txt that says: test", "t3", approve=True)
+    assert os.path.exists("output/notes/approved.txt"), "An approved save should write the file"
+    print("✅ approved: file written")
+
+    print("\n🎉 Module 7 exercise done!")
+```
+
+## Starter code
+
+Open `day2/exercises/m7_exercise.py` and fill in the `TODO`s.
+
+```python m7_exercise.py
+import os
+import requests
+from dotenv import load_dotenv
+from langchain.tools import tool
+from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
+
+load_dotenv()
+
+BASE_URL = "https://api.sectors.app/v2"
+HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+# ── Given: the tools from Module 6 ─────────────────────────────────────────────
+
+@tool
+def get_company_overview(ticker: str) -> dict:
+    """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
+    Use it for questions about a single company, e.g. "How did NISP close?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
+    """
+    url = f"{BASE_URL}/company/report/{ticker}/"
+    response = requests.get(url, headers=HEADERS, params={"sections": "overview"}, timeout=30)
+    return response.json()
+
+
+@tool
+def get_top_banks(metric: str = "market_cap", n: int = 5) -> dict:
+    """Rank Indonesian listed banks by a metric, highest first.
+    Use it for ranking questions such as "Which banks are the largest?" or "Which bank has the highest ROE?".
+    Args:
+        metric: one of market_cap, roe_ttm (return on equity), pe_ttm (price/earnings), pb_mrq (price/book), yield_ttm (dividend yield).
+        n: how many banks to return.
+    """
+    params = {"where": "sub_sector='banks'", "order_by": f"-{metric}", "limit": n, "include_query_values": "true"}
+    response = requests.get(f"{BASE_URL}/companies/", headers=HEADERS, params=params, timeout=30)
+    return response.json()
+
+
+@tool
+def save_note(filename: str, text: str) -> str:
+    """Save a short note to a text file in the output folder. Use it only when the user asks to save something."""
+    os.makedirs("output/notes", exist_ok=True)
+    with open(f"output/notes/{filename}", "w", encoding="utf-8") as f:
+        f.write(text)
+    return f"Note saved to output/notes/{filename}"
+
+
+SYSTEM_PROMPT = """You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Never give buy, sell or hold advice. Only save a note when the user asks."""
+
+# ── Your work ──────────────────────────────────────────────────────────────────
+
+# TODO 1: create the agent with create_agent(model=..., tools=[...], system_prompt=...,
+#         middleware=[HumanInTheLoopMiddleware(interrupt_on={"save_note": True})],
+#         checkpointer=InMemorySaver())
+agent = None  # TODO
+
+
+def ask(question, thread_id, approve):
+    """Ask the agent a question in the given thread. If it pauses for approval, answer
+    {"type": "approve"} when approve is True, else {"type": "reject", "message": "..."}.
+    Return the final result dict."""
+    # 1. config = {"configurable": {"thread_id": thread_id}}
+    # 2. result = agent.invoke({"messages": [{"role": "user", "content": question}]}, config)
+    # 3. while "__interrupt__" in result: resume with Command(resume={"decisions": [decision]})
+    pass  # TODO
+```
