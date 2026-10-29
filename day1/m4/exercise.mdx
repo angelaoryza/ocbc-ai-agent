@@ -1,0 +1,107 @@
+---
+title: "Module 4 exercise"
+description: "Put the report in the prompt and get a digest back."
+sidebarTitle: "Exercise"
+icon: "pen-to-square"
+---
+
+
+## Your tasks
+
+From the top of the file:
+
+```text
+Module 4 Exercise: put the report in the prompt and get a digest back.
+
+Write three things:
+    1. build_prompt(report)    the messages: rules (system) + report (human)
+    2. write_digest(report)    one call to the LLM, returns the text
+    3. BankDigest              a Pydantic model, used for structured output
+
+Run  python day1/examples/m3_example.py --now  first (it writes today's report), then:
+    python day1/exercises/m4_exercise.py
+
+Copilot is allowed. The checks use 2 model calls.
+```
+
+## Run it
+
+Replace each `TODO`, then run from the course folder:
+
+```bash
+python day1/exercises/m4_exercise.py
+```
+
+## The checks
+
+The block at the bottom of the file tests your work. Do not edit it: each `✅` line means one part is done.
+
+```python m4_exercise.py (checks)
+# ── Check your work (do not edit) ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    with open(f"output/reports/report_{date.today()}.md", encoding="utf-8") as f:
+        report = f.read()
+
+    messages = build_prompt(report)
+    assert messages and messages[0] == ("system", SYSTEM_PROMPT), "The first message is the system prompt"
+    assert "<report>" in messages[1][1] and report in messages[1][1], "Put the report between <report> tags"
+    print("✅ build_prompt")
+
+    digest = write_digest(report)
+    assert isinstance(digest, str) and len(digest) > 50, "write_digest should return the reply text"
+    print("✅ write_digest:", digest[:120].replace("\n", " "), "...")
+
+    assert set(BankDigest.model_fields) == {"ticker", "last_close", "trend", "summary"}, "BankDigest fields"
+    result = llm.with_structured_output(MorningDigest).invoke(messages)
+    assert result.banks and all(b.trend in ("up", "down", "flat") for b in result.banks)
+    print("✅ BankDigest:", [(b.ticker, b.trend) for b in result.banks])
+
+    print("\n🎉 Module 4 exercise done!")
+```
+
+## Starter code
+
+Open `day1/exercises/m4_exercise.py` and fill in the `TODO`s.
+
+```python m4_exercise.py
+import os
+from datetime import date
+from typing import Literal
+from pydantic import BaseModel, Field
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+SYSTEM_PROMPT = """You write a short morning digest of Indonesian bank stocks for relationship managers.
+Use only the facts in the report. Quote numbers exactly, with their dates.
+Never give buy, sell or hold advice, price targets or predictions."""
+
+
+def build_prompt(report):
+    """Return [("system", SYSTEM_PROMPT), ("human", <the report between <report> tags + the task>)]."""
+    pass  # TODO
+
+
+def write_digest(report):
+    """Call the LLM with build_prompt(report) and return the reply text."""
+    # Use llm.invoke(...) and read the text with .text
+    pass  # TODO
+
+
+# Define BankDigest with: ticker (str), last_close (int),
+# trend (only "up", "down" or "flat"), summary (str)
+class BankDigest(BaseModel):
+    pass  # TODO
+
+
+class MorningDigest(BaseModel):
+    headline: str
+    banks: list[BankDigest]
+```

@@ -1,0 +1,171 @@
+---
+title: "Module 7 worked example"
+description: "The IDX Market Assistant agent, with approval before actions."
+sidebarTitle: "Worked example"
+icon: "play"
+---
+
+
+Builds an agent with create_agent: 3 Sectors tools to read data and 1 action tool
+(save_note) that needs your approval. Asks a company question, a ranking question,
+and a request to save a note; you approve or reject the save in the terminal.
+
+## Run it
+
+From the course folder, with the `.venv` activated:
+
+```bash
+python day2/examples/m7_example.py
+```
+
+The script prints lines like these:
+
+```text
+❓ How did NISP trade over the last week?
+🔧 Tools used: ['get_daily_prices']
+💬 ...
+⏸️ The agent wants to run save_note with {'filename': 'roe_leaders.txt', 'text': '...'}
+Approve? (y/n):
+```
+
+## The script
+
+```python m7_example.py
+"""
+Module 7 example: the IDX Market Assistant agent, with approval before actions.
+
+What it does:
+    Builds an agent with create_agent: 3 Sectors tools to read data and 1 action tool
+    (save_note) that needs your approval. Asks a company question, a ranking question,
+    and a request to save a note; you approve or reject the save in the terminal.
+
+How to run (from the project root; about 6-10 model calls):
+    python day2/examples/m7_example.py
+
+Expected output:
+    ❓ How did NISP trade over the last week?
+    🔧 Tools used: ['get_daily_prices']
+    💬 ...
+    ⏸️ The agent wants to run save_note with {'filename': 'roe_leaders.txt', 'text': '...'}
+    Approve? (y/n):
+"""
+
+import os
+import requests
+from datetime import date, timedelta
+from dotenv import load_dotenv
+from langchain.tools import tool
+from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
+
+load_dotenv()
+
+BASE_URL = "https://api.sectors.app/v2"
+HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+```
+
+### Tools
+
+```python m7_example.py
+# ── Tools ──────────────────────────────────────────────────────────────────────
+
+@tool
+def get_company_overview(ticker: str) -> dict:
+    """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
+    Use it for questions about a single company, e.g. "How did NISP close?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
+    """
+    url = f"{BASE_URL}/company/report/{ticker}/"
+    response = requests.get(url, headers=HEADERS, params={"sections": "overview"}, timeout=30)
+    return response.json()
+
+
+@tool
+def get_daily_prices(ticker: str, days: int = 10) -> list:
+    """Get the daily closing prices and volumes of one IDX company for the last `days` calendar days.
+    Use it for questions about how a stock moved recently, e.g. "How did BMRI do this week?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BMRI.
+        days: how many calendar days back to look (a week is 7).
+    """
+    end = date.today()
+    start = end - timedelta(days=days)
+    url = f"{BASE_URL}/daily/{ticker}/"
+    response = requests.get(url, headers=HEADERS, params={"start": str(start), "end": str(end)}, timeout=30)
+    return response.json()
+
+
+@tool
+def get_top_banks(metric: str = "market_cap", n: int = 5) -> dict:
+    """Rank Indonesian listed banks by a metric, highest first.
+    Use it for ranking questions such as "Which banks are the largest?" or "Which bank has the highest ROE?".
+    Args:
+        metric: one of market_cap, roe_ttm (return on equity), pe_ttm (price/earnings), pb_mrq (price/book), yield_ttm (dividend yield).
+        n: how many banks to return.
+    """
+    params = {"where": "sub_sector='banks'", "order_by": f"-{metric}", "limit": n, "include_query_values": "true"}
+    response = requests.get(f"{BASE_URL}/companies/", headers=HEADERS, params=params, timeout=30)
+    return response.json()
+
+
+@tool
+def save_note(filename: str, text: str) -> str:
+    """Save a short note to a text file in the output folder. Use it only when the user asks to save something."""
+    os.makedirs("output/notes", exist_ok=True)
+    with open(f"output/notes/{filename}", "w", encoding="utf-8") as f:
+        f.write(text)
+    return f"Note saved to output/notes/{filename}"
+```
+
+### Agent
+
+```python m7_example.py
+# ── Agent ──────────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Never give buy, sell or hold advice. Only save a note when the user asks."""
+
+agent = create_agent(
+    model=llm,
+    tools=[get_company_overview, get_daily_prices, get_top_banks, save_note],
+    system_prompt=SYSTEM_PROMPT,
+    middleware=[HumanInTheLoopMiddleware(interrupt_on={"save_note": True})],
+    checkpointer=InMemorySaver(),
+)
+
+
+def ask(question, thread_id="rm-desk"):
+    config = {"configurable": {"thread_id": thread_id}}
+    result = agent.invoke({"messages": [{"role": "user", "content": question}]}, config)
+
+    while "__interrupt__" in result:                       # the agent paused for approval
+        request = result["__interrupt__"][0].value["action_requests"][0]
+        print(f"⏸️ The agent wants to run {request['name']} with {request['args']}")
+        if input("Approve? (y/n): ").strip().lower() == "y":
+            decision = {"type": "approve"}
+        else:
+            decision = {"type": "reject", "message": "The reviewer rejected this."}
+        result = agent.invoke(Command(resume={"decisions": [decision]}), config)
+
+    used = [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+    print(f"🔧 Tools used: {used}")
+    print(f"💬 {result['messages'][-1].text}")
+
+
+if __name__ == "__main__":
+    questions = ["How did NISP trade over the last week?",
+                 "Which three banks have the highest return on equity? Save the ranking in a note called roe_leaders.txt"]
+    for i, question in enumerate(questions):
+        print(f"\n❓ {question}")
+        ask(question, thread_id=f"question-{i}")
+```

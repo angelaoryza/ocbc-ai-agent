@@ -1,0 +1,133 @@
+---
+title: "Module 4: The first LLM call"
+description: "Connecting the data to the model: grounding, prompt templates, structured output and checks."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Modules 2 and 3 built the first stage: every morning a report, with dates and sources, waits in a file. Module 4 begins the second stage, **connecting the data to the model**: the readers want four sentences, not a table. The model can write them; only the report can supply the facts. Our code still decides **which** data the model sees and **when**; the model’s only job is to write.
+
+## 4.1 What happens in an LLM call
+
+Seen from the code, a call to a model is simple: the program sends a list of **messages** to the provider over the internet and receives one message back. Each message has a **role**:
+
+| Role | Holds | For the morning digest |
+|----|----|----|
+| **System** | The standing rules: who the model is writing for, what it must and must not do, the shape of the answer | “You write a morning digest for relationship managers. Use only the report. Never give buy, sell or hold advice.” |
+| **Human** (user) | The task and the data for this call | The report, and “write one headline and one sentence per bank” |
+| **AI** (assistant) | The model’s reply | The digest |
+
+Rules that hold for every call belong in the system message; what changes per call belongs in the human message.
+
+Five properties of a call shape every design decision that follows:
+
+| Property | What it means | What it means for the system |
+|----|----|----|
+| **Stateless** | The model remembers nothing between calls | Everything it needs must be in the messages of *this* call. A chat “remembers” only because the application sends the earlier messages again |
+| **Tokens** | Text is counted in small pieces, roughly four characters of English each, and somewhat more for Indonesian | Cost, speed and size limits are all measured in tokens |
+| **Context window** | The maximum number of tokens in one call, prompt and reply together | Large collections must be *selected*, not pasted (Module 5) |
+| **Temperature** | How varied the wording is; lower is more predictable | Low for reports and extraction; higher only for creative writing |
+| **Non-deterministic** | The same prompt can produce different wording | Test outputs by their facts and rules, not by exact text |
+
+Every call also has a **cost** (per token), a **delay** (seconds) and **limits** (calls per minute and per day): cheap once a morning, not cheap ten times per question for thirty users.
+
+## 4.2 Calling the model from code
+
+In code, the model is a **component behind an interface**. This course uses **LangChain**, which gives every model provider the same small set of operations: send messages and get a reply; ask for a structured answer; offer tools; build an agent. The model is created once, with its name and key, and used everywhere:
+
+```python
+llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", api_key=os.getenv("GEMINI_API_KEY"))
+reply = llm.invoke([("system", SYSTEM_PROMPT), ("human", task)])
+```
+
+Because the rest of the code only uses these common operations, moving from Gemini to the bank’s own approved model means changing one line, not the system. The reply also reports the tokens used: watch it, because a longer prompt or a resent history raises the cost of every call.
+
+## 4.3 Grounding: Giving the model our data
+
+Asked for a fact it does not have, a model declines or, worse, produces something that looks right. **Grounding** puts the facts in the prompt and tells the model to use only those: it stops being a source of information and becomes a writer working from a brief.
+
+A grounded prompt has five parts:
+
+| Part | Purpose | In the digest prompt |
+|----|----|----|
+| **Role and audience** | Sets tone, depth and vocabulary | A morning digest for relationship managers |
+| **The data, clearly marked** | Gives the facts, separated from the instructions | The report between `<report>` and `</report>` tags |
+| **Grounding rules** | Keeps the model to the data | Use only the report; quote numbers exactly, with their dates; say when something is not in the report |
+| **Safety rules** | Keeps the output within the bank’s rules | Never give buy, sell or hold advice, price targets or predictions |
+| **Output shape** | Makes the result predictable | One headline sentence, then one sentence per bank |
+
+**Why the tags?** Clear **delimiters** tell the model which text is data and which is instruction. Data can contain text that looks like an instruction (“ignore your previous instructions”); hiding instructions in content is called **prompt injection**, and separating data from instructions is the first defence.
+
+**“Say what is missing.”** The most valuable rule tells the model what to do when the answer is not in the data. Without it, the model fills the gap with something plausible.
+
+**Instructions reduce problems; they do not remove them.** A rule in a prompt is a strong request, not a guarantee. A dependable system also checks the output (4.6).
+
+## 4.4 Prompts as reusable, reviewed assets
+
+The digest prompt is used every morning with a different report. A brief for one bank is used for every bank, with a different ticker. In code, a prompt is not something typed once; it is a **template** that will run hundreds of times, with inputs nobody has seen yet.
+
+A **prompt template** is the prompt written once, with **blanks** for what changes:
+
+```python
+digest_prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "<report>\n{report}\n</report>\n\n{task}"),
+])
+```
+
+Thinking of prompts as templates changes how they are treated:
+
+- **Instructions and data are separated by design.** The template holds the instructions; the blanks receive the data. What goes into a blank is always treated as data, however it is worded.
+- **A prompt is reviewed like code.** Compliance can read the digest template once and know exactly what every run will send. Copies of a prompt pasted into different scripts drift apart, and a drifted copy is a rule nobody approved.
+- **A prompt is tested against varied inputs**: a normal day, an extreme day, a report with something missing.
+- **A prompt is versioned.** When the template changes, the change is deliberate and recorded, so that a change in the digests can be traced to a change in the prompt.
+
+Connected to the model, a template forms a small **chain**: fill the blanks, send, reply. It is also what a **skill** is in code (Module 1).
+
+## 4.5 Structured output: the model talking back to code
+
+Sentences are right for a person, but code needs **fields** with known names, types and allowed values to sort, display or raise an alert.
+
+**Structured output** asks the model to fill a fixed shape, a **schema**, and checks that it did. In Python the schema is written as a **Pydantic** model, a class that lists each field with its type and a description:
+
+```python
+class BankDigest(BaseModel):
+    ticker: str
+    last_close: int
+    trend: Literal["up", "down", "flat"] = Field(description="Direction of the 10-day change")
+    summary: str = Field(description="One factual sentence from the report")
+```
+
+A schema is a **contract** between the model and the rest of the system:
+
+| In the schema | What it guarantees |
+|----|----|
+| A type (`int`, `str`, a list) | A reply with the wrong type is rejected, not passed on |
+| A fixed set of values (`"up"`, `"down"`, `"flat"`) | No other value can reach the code that decides what to do |
+| A description | Tells the model what the field means; it is part of the prompt |
+| Nested schemas (a list of bank digests) | One call returns a record for every bank |
+
+**The check is the guarantee, not the request.** The model is asked to fill the schema; the validation confirms that it did. A reply that does not fit raises an error that code can catch, log and retry, instead of a broken record travelling downstream.
+
+**Which decisions stay in code?** It is tempting to ask the model “list the banks that moved more than 2%”. A sounder division: **code computes and decides** (the change, the threshold); **the model explains**.
+
+## 4.6 Checking the output
+
+A grounded, templated, structured call is much more reliable than a bare question, but it is still the output of a model. Before a digest reaches a relationship manager, a dependable system checks it, by code where possible and by a person where it matters:
+
+| Check | Question | How |
+|----|----|----|
+| **Numbers** | Does every number appear in the report, with its date? | Compare the numbers in the text with the report |
+| **Gaps** | Does the output say what is missing or out of date? | Look for the report’s “not included” line in the digest |
+| **Advice** | Is there any buy, sell, hold or target-price language? | A simple word check; a person for anything client-facing |
+| **Shape** | Does it follow the requested format? | Structured output validates it automatically |
+
+The pattern to remember is: **the model writes, the code checks**. It applies to every later module, from the news answers of Module 5 to the agent of Day 2.
+
+<Info>
+**Questions to think about**
+
+- Write the five parts of a grounded prompt for a task in your own area. What is the “data between tags”, and what should the model say when the answer is not in it?
+- Which part of that prompt would compliance want to review, and how would a template make that review last?
+- For the same task, what would you ask the model to return as fields? Which decision based on those fields should stay in code?
+</Info>

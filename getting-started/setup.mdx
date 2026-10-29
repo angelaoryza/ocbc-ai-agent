@@ -1,0 +1,81 @@
+---
+title: "Setup"
+description: "Install Python and the course packages, add your keys to .env, and check that everything works."
+icon: "gear"
+---
+
+## What you need
+
+- Python 3.11 or newer
+- VS Code with the Python and Jupyter extensions
+- GitHub Copilot
+
+## Set up the course folder
+
+<Steps>
+  <Step title="Create a virtual environment and install the packages">
+    In the course folder:
+
+    ```bash
+    python -m venv .venv
+    # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+
+    `requirements.txt` pins exact versions, tested together with Python 3.12.9 (Python 3.11 or newer is supported).
+  </Step>
+  <Step title="Add your keys to .env">
+    Copy `.env.example` to `.env` and fill in `SECTORS_API_KEY` and `GEMINI_API_KEY`.
+
+    For Module 7.5 (optional): `MAGIC_API_KEY`, `MY_EMAIL`, and `credentials.json` from the trainer in this folder.
+  </Step>
+  <Step title="Run the setup check">
+    ```bash
+    python check_setup.py
+    ```
+
+    Every line should say ✅ PASS.
+  </Step>
+  <Step title="Choose the notebook kernel">
+    In VS Code, open a notebook and choose the `.venv` interpreter as the kernel.
+  </Step>
+</Steps>
+
+Run every script from the course folder, for example `python day1/examples/m2_example.py`.
+
+## The variables in `.env`
+
+| Variable | What it is |
+|---|---|
+| `SECTORS_API_KEY` | Your Sectors key ([sectors.app/api](https://sectors.app/api)). The raw key: no `Bearer` prefix. |
+| `SECTORS_BASE_URL` | The Sectors REST API address. Keep the value from `.env.example`. |
+| `SECTORS_MCP_URL` | The Sectors MCP server address. Keep the value from `.env.example`. |
+| `GEMINI_API_KEY` | Your Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)). A paid-tier key is needed for class. |
+| `GEMINI_MODEL` | The Gemini model the notebooks and scripts use. |
+| `MAGIC_API_KEY` | Optional, Module 7.5: image generation ([magichour.ai](https://magichour.ai)). |
+| `MY_EMAIL` | Optional, Module 7.5: your e-mail for the Gmail test. |
+| `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` | Only if the OCBC network needs them. Ask IT. |
+
+<Warning>
+Never commit or share `.env`. Keys live in `.env` only: never in code, notebooks, prompts, logs or chat messages.
+</Warning>
+
+Gmail also needs `credentials.json` in the course folder, from your trainer. Your first Gmail run saves `token.json`, which stays on your laptop.
+
+## What `check_setup.py` checks
+
+It checks the Python version, the packages, the keys in `.env` (without printing them), the Sectors API, Gemini chat, Gemini embeddings and the Sectors MCP server, and (optional) what the Module 7.5 tools need. It uses 1 chat call, 1 embedding call and 1 Sectors credit.
+
+| Check | Passes when |
+|---|---|
+| Python 3.11 or newer | Your Python version is 3.11 or newer |
+| Packages from `requirements.txt` | All course packages import |
+| `.env` file in this folder | `.env` exists in the course folder |
+| `SECTORS_API_KEY` is set, `GEMINI_API_KEY` is set | Each key has a real value |
+| Sectors REST API | A request for NISP's company report succeeds |
+| Gemini chat | One chat call answers |
+| Gemini embeddings | One embedding call answers |
+| Sectors MCP server | The server lists its tools |
+| Optional: `MAGIC_API_KEY`, `MY_EMAIL`, `credentials.json` | Shown as ✅ PASS or ⚠️ MISSING; without one, only that tool is skipped |
+
+If some checks fail, fix them, or send the output to the trainer.

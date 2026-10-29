@@ -1,0 +1,108 @@
+---
+title: "Module 3: Turning the script into an automated flow"
+description: "From a script someone runs to a flow that runs every weekday morning on its own."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+In Module 2 the data layer ran when someone ran it, and that person quietly did a lot of work: choosing inputs, running steps in order, noticing a wrong answer, retrying. Module 3 removes that person. The goal is a **flow** that runs every weekday morning on its own and leaves a report ready before anyone arrives. Everything the person did by judgement must now be done by design. The scheduler itself is a few lines of code; the thinking around it is what makes a flow dependable.
+
+On the control ladder, this is the first rung in its complete form: **our code decides which data, and the scheduler decides when.**
+
+<Frame caption="The automated flow: a trigger starts the job; fetch, combine, write and log; one failure does not stop the rest">
+  <img src="/images/day1/automated-flow.png" alt="The automated flow: a trigger starts the job; fetch, combine, write and log; one failure does not stop the rest" />
+</Frame>
+
+## 3.1 What changes when nobody is watching
+
+Compare a script a person runs with a flow that runs by itself:
+
+| A person running a script… | An automated flow must… |
+|----|----|
+| decides when to run it | have a **trigger**: a time or an event, stated precisely |
+| knows which inputs to use today | receive its inputs as **parameters** or work them out (today’s date) |
+| reads the output and notices if it looks wrong | **check** its own results and say what is missing |
+| retries when something fails | **handle failures** it can recover from, and record the ones it cannot |
+| remembers what happened yesterday | **leave a record** (a log) of every run |
+| is in one time zone | state its **time zone** explicitly |
+
+Automation does not remove judgement; it moves it from the moment of running to the moment of designing.
+
+## 3.2 Structuring the script into reusable functions
+
+The first step towards a flow is to break the script into **functions with one job each**. This is not tidiness for its own sake. A scheduler can only call a function, and a function can only be called safely if it does not depend on anything that happened before.
+
+A function that is safe to schedule:
+
+| Property | Why it matters when nobody is watching |
+|----|----|
+| **Does one job** | When it fails, you know exactly what failed |
+| **Gets its inputs as parameters** | It does not depend on a variable left over from an earlier step |
+| **Returns its result** | The caller decides whether to save, print, send or combine it |
+| **Can be run on its own** | You can test it with one bank and a fixed date, without the scheduler |
+| **Fails clearly** | A failure says what went wrong, so the caller can decide what to do |
+
+Think of the flow as a short **pipeline**, where each stage takes the previous stage’s output:
+
+| Stage | Job | Function in this course |
+|----|----|----|
+| Fetch | Get the overview and the prices of one bank | `get_company_report`, `get_daily_prices` (Module 2) |
+| Combine | Turn them into one record per bank | `build_company_report` |
+| Write | Turn all records into one report | `write_report` |
+| Run | Do the above for every bank, save the report, write the log | `run_daily_report` |
+
+Separate stages can be tested alone, contain a failure in one place (3.5), and be reused: on Day 2 the fetch functions become tools an agent can call.
+
+## 3.3 Combining company overview and transaction data into one report
+
+Here the report joins a company’s overview (*who it is*) with its **transaction data**, the daily trading record (*what the market did*). Combining any two sources raises three questions:
+
+- **What is the key?** The sources are joined on an identifier, which is why Module 2 insisted on one format for it. An identifier written two ways silently drops a row.
+- **As of when?** The sources may not describe the same moment, so each figure carries its own date.
+- **What if one source is missing?** The report says so, rather than showing half a record as if it were complete.
+
+**Design the report for its reader**: a summary first, figures with their dates, what is missing, and where the data came from. Written in **Markdown**, it serves both readers: people, and from Module 4, the model.
+
+## 3.4 Scheduling the flow to run on its own
+
+A **scheduler** runs a function at stated times. Four ideas are enough to reason about any scheduler, in any language or platform:
+
+| Idea | Meaning | Example |
+|----|----|----|
+| **Job** | The function to run, with its inputs | The daily report for four banks |
+| **Trigger** | When the job runs | Every weekday at 07:30; every 30 minutes during trading hours |
+| **Time zone** | The clock the trigger follows | Asia/Jakarta (WIB), stated explicitly |
+| **Where it runs** | The program or machine that keeps the schedule | A script on a server; the operating system’s scheduler; a cloud service |
+
+**Triggers.** A **time-based trigger** fires on a calendar (“weekdays at 07:30”, usually written as a **cron** rule) or at an interval (“every 30 minutes”). An **event-based trigger** fires when something happens, such as a file arriving or a threshold being crossed.
+
+**Time zones are a design decision.** A trigger without one follows the machine’s clock; on a server set to UTC, “07:30” runs at 14:30 in Jakarta. State the time zone, always. Calendars matter too: on a public holiday there may be no new data, which is not a failure.
+
+**Where the schedule lives.** Here the scheduler runs inside a Python program (**APScheduler**), so **the schedule lives only as long as the program does**. A real job runs on a machine that is always on (Day 4). The scheduled function does not change; only where it lives does.
+
+```python
+scheduler = BlockingScheduler(timezone="Asia/Jakarta")
+scheduler.add_job(run_daily_report, "cron", day_of_week="mon-fri", hour=7, minute=30)
+scheduler.start()
+```
+
+**Two questions every scheduled job must answer.** *What if it runs twice?* A job that is safe to run again (no duplicate reports or rows) is **idempotent**. *What if a run takes longer than the interval?* Then it overlaps with itself, unless the interval is longer or the scheduler waits for the previous run.
+
+## 3.5 Handling a failed run without crashing the whole flow
+
+Something will eventually go wrong at 07:30. Automated systems are judged by how they behave on a bad day. Four principles:
+
+- **Contain the damage.** Handle each unit of work (one bank) on its own, so one failure does not stop the rest.
+- **Prefer a partial result, clearly labelled.** Three banks and “NISP not included: the service did not respond” beats no report, and is far safer than one that quietly omits a bank.
+- **Know failed from empty.** No new data on a holiday is not a failure; an unknown item is. The reader must act differently.
+- **Make every run observable.** A scheduled job has no audience: if it raises an error, the scheduler records it and carries on, and nobody is told. So the job writes **one log line per run** (what succeeded, what failed, why), and ideally an **alert** reaches a person when a run fails.
+
+These principles turn failure from an emergency into a normal event with a known response.
+
+<Info>
+**Questions to think about**
+
+- Take a routine report in your own work. What does the person who prepares it do by judgement that an automated flow would have to do by design?
+- If your flow ran twice by mistake this morning, what would go wrong? How would you make it safe to run again?
+- Which failure of your flow would be *silent*, and what would you write in the log so that someone notices it?
+</Info>

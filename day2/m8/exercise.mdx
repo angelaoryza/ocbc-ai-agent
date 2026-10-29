@@ -1,0 +1,112 @@
+---
+title: "Module 8 exercise"
+description: "An agent with Sectors MCP tools and a tool of our own."
+sidebarTitle: "Exercise"
+icon: "pen-to-square"
+---
+
+
+## Your tasks
+
+From the top of the file:
+
+```text
+Module 8 Exercise: an agent with Sectors MCP tools and a tool of our own.
+
+Write:
+    1. get_watchlist()          a local @tool: the RM desk's watchlist (our data, not the provider's)
+    2. get_mcp_answer(question) connect to the Sectors MCP server, keep the SELECTED tools,
+                                add get_watchlist, build the agent, and return await agent.ainvoke(...)
+
+Run from the project root:
+    python day2/exercises/m8_exercise.py
+
+Copilot is allowed. The checks use about 6 model calls.
+```
+
+## Run it
+
+Replace each `TODO`, then run from the course folder:
+
+```bash
+python day2/exercises/m8_exercise.py
+```
+
+## The checks
+
+The block at the bottom of the file tests your work. Do not edit it: each `✅` line means one part is done.
+
+```python m8_exercise.py (checks)
+# ── Check your work (do not edit) ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    assert hasattr(get_watchlist, "invoke"), "Add @tool above get_watchlist"
+    assert get_watchlist.invoke({}) == WATCHLIST, "get_watchlist should return WATCHLIST"
+    print("✅ get_watchlist:", get_watchlist.invoke({}))
+
+    result = asyncio.run(get_mcp_answer("How did NISP close on 23 October 2026?"))
+    assert result is not None, "get_mcp_answer should return the result of agent.ainvoke"
+    used = tools_used(result)
+    assert used and all(name in SELECTED for name in used), f"Only SELECTED MCP tools are needed here, the agent used {used}"
+    assert "1,185" in result["messages"][-1].text or "1185" in result["messages"][-1].text, "NISP closed at 1,185"
+    print("✅ MCP only:", used)
+
+    result = asyncio.run(get_mcp_answer("Which of my watchlist banks closed highest on its last trading day?"))
+    used = tools_used(result)
+    assert "get_watchlist" in used, f"The agent should look up the watchlist first, it used {used}"
+    assert any(name in SELECTED for name in used), f"The agent should then use an MCP tool, it used {used}"
+    print("✅ Mixed:", used)
+    print("✅ Answer:", result["messages"][-1].text[:150].replace("\n", " "))
+    print("\n🎉 Module 8 exercise done!")
+```
+
+## Starter code
+
+Open `day2/exercises/m8_exercise.py` and fill in the `TODO`s.
+
+```python m8_exercise.py
+import os
+import asyncio
+from datetime import date
+from dotenv import load_dotenv
+from langchain.mcp import MCPAdapter
+from langchain.tools import tool
+from langchain.agents import create_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+load_dotenv()
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+SELECTED = ["fetch-company-report", "fetch-daily-price", "fetch-companies-top-changes"]
+WATCHLIST = ["BBCA", "BBRI", "BMRI", "NISP"]
+
+SYSTEM_PROMPT = f"""You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Today is {date.today()}. The MCP tools take explicit dates: work them out from today.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Never give buy, sell or hold advice."""
+
+
+# TODO 1: a local tool get_watchlist() -> list that returns WATCHLIST.
+# The docstring must say when to use it: questions about "my banks", "the watchlist", "our banks".
+def get_watchlist() -> list:
+    pass  # TODO
+
+
+async def get_mcp_answer(question):
+    """Answer with an agent that has the SELECTED Sectors MCP tools plus get_watchlist. Return the result dict."""
+    # 1. transport = StreamableHttpTransport(url=os.getenv("SECTORS_MCP_URL", ...), headers={"Authorization": ...})
+    # 2. async with MCPAdapter(Client(transport)) as sector:
+    #        tools = await sector.list_tools(), keep the SELECTED ones, add get_watchlist
+    #        create the agent and return await agent.ainvoke({"messages": [...]})
+    pass  # TODO
+
+
+def tools_used(result):
+    return [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+```

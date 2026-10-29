@@ -1,0 +1,77 @@
+---
+title: "Module 8: MCP, connecting the agent to Sectors tools"
+description: "The Model Context Protocol: tools published once by the provider, for any application to use."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+In Modules 6 and 7, every data tool was a function we wrote and maintained ourselves. That does not scale. A data provider may offer dozens of endpoints; a bank may have many AI applications that need the same tools; and every change at the provider means changing every application’s code.
+
+The **Model Context Protocol (MCP)** solves this by letting the provider publish its tools once, in a standard way, for any application to use. This module is about what MCP is, how the pieces fit together, how to choose from a server’s tools, and when MCP is worth it compared with writing a tool yourself. We use the server that Sectors already runs; we do not build one.
+
+## 8.1 The problem MCP solves
+
+Without a standard, every application needs custom code for every data provider: many providers times many applications. MCP turns this into a simple contract: a provider runs one **server**, and any MCP **client** can discover its tools and call them in the same way.
+
+| Without MCP | With MCP |
+|----|----|
+| We write and maintain a tool for every endpoint | The provider maintains the tools on its server |
+| A new endpoint means new code in every app | The new tool simply appears in the server’s list |
+| Each app keeps its own copy of the descriptions | One description, written by the people who know the data |
+| Tools are hard to share across teams | Any MCP client (our agent, an AI assistant, an IDE) can connect |
+
+**When is MCP worth it?** When a provider already runs a server with tools you need, when several applications should share the same tools, or when the tools are best maintained by the data owner. For one or two endpoints you want to control closely (your own validation, caching or format), a local tool is simpler. Real systems use both.
+
+## 8.2 Host, client and server
+
+<Frame caption="MCP roles: our program is the host and the client; Sectors runs the server; the LLM only requests">
+  <img src="/images/day2/mcp-roles.png" alt="MCP roles: our program is the host and the client; Sectors runs the server; the LLM only requests" />
+</Frame>
+
+| Role | In this course | Does what |
+|----|----|----|
+| **Host** | Our Python program | Runs the agent and owns the conversation |
+| **Client** | A component inside our program | Opens the connection, lists the tools, sends the calls |
+| **Server** | Run by Sectors | Offers the tools and runs them on its side |
+| **Model** | Gemini | Reads the descriptions and **requests** calls |
+
+**The client is our code, not the model.** The model never connects to the server and never sees the key. It requests an MCP tool exactly as it requested a local one; our program passes the request on. Everything said in Module 6 about control still holds: every call passes through our code.
+
+An MCP server can offer **tools** (functions to call, used here), **resources** (data to read) and **prompts** (templates). It is reached over a **transport**: over the web for a remote server like Sectors, with the key sent in a header, or as a local program on the same machine.
+
+## 8.3 Connecting in practice
+
+Connecting takes a few lines: open a connection to the server, list its tools, keep the ones you need, and give them to the agent. Three practical points are worth understanding rather than memorising:
+
+- **The connection has a lifetime.** It is opened, used and closed; tools are only usable while it is open.
+- **MCP calls are asynchronous.** The program waits for the server without blocking, so the agent is called in the asynchronous way.
+- **The server defines the tools.** Its tools use its own argument names and formats, and its own descriptions. Read them as you would read any tool before trusting it.
+
+The model also does not know today’s date. Server tools often need explicit dates, so the system prompt states today’s date, or the agent will guess.
+
+## 8.4 Choosing from a server’s tools
+
+The Sectors MCP server offers 66 tools, covering several markets and data sets. Their descriptions alone run to about 65,000 characters, and all of it would be sent with **every** model call if every tool were passed to the agent. The rule from Module 6 applies even more strongly: **choose the few tools the job needs.** For the market assistant, three are enough: a company report, daily prices, and top movers by sector.
+
+Keeping tools by name, in an explicit list, has a second benefit: anyone reading the code can see exactly what the agent can do. When a server has many tools, searching their descriptions for a keyword is a quick way to find candidates before choosing.
+
+## 8.5 Mixing MCP tools with local tools, and trusting a server
+
+The agent sees one list of tools; where each runs does not matter to the model. A useful rule of thumb: **use MCP for the provider’s data; keep local tools for what only you have**, such as your own saved data, your own lists, or actions in your own systems. Approval works the same for both, because every call passes through our agent.
+
+Connecting to a server means trusting it, so the same questions apply as for any vendor:
+
+| Question | Why it matters |
+|----|----|
+| Who runs the server, and is it approved? | Its tools run on someone else’s systems |
+| What does the key allow? | The key gives the server’s access, not just the tools you selected |
+| Which tools are actions? | Server tools that change something need approval like any other |
+| Can the descriptions change? | A changed description changes the agent’s behaviour without a code change |
+
+<Info>
+**Questions to think about**
+
+- Which data sources in your organisation would be worth an MCP server, because several applications need them?
+- For the market assistant, why keep the news search as a local tool rather than look for a server that offers news?
+- What would you check before connecting an agent to a third-party MCP server?
+</Info>

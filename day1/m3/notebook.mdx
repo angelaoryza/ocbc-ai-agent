@@ -1,0 +1,443 @@
+---
+title: "Module 3 notebook: turning the script into an automated flow"
+description: "Make the data functions reusable, build one report per bank, schedule it and survive failures."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 3 (about 38 minutes). After it come the example script
+`day1/examples/m3_example.py` and the exercise `day1/exercises/m3_exercise.py`. Run it from the top.
+
+## Background
+
+In Module 2 you pulled the data whenever you ran a cell. The RMs liked the result, and now your manager wants it
+**every weekday morning, before the RMs arrive, without you**:
+
+- **3.1 Make the pieces reusable.** Functions with one job, inputs as parameters, results returned.
+- **3.2 One report per bank.** The company overview and the trading data, side by side.
+- **3.3 Run it on its own.** A scheduler that fires at 07:30 Jakarta time.
+- **3.4 When something breaks at 07:30.** One failing bank must not cost the RMs the whole report.
+- **3.5 The scheduler runs the real job.** The report function on a schedule, with nobody pressing Run.
+
+| Step on the ladder | Who decides WHICH data | Who decides WHEN |
+|---|---|---|
+| **Report (Modules 3–4)** | **Our code** | **The scheduler (our code)** |
+| RAG (Module 5) | The user's question | The user |
+
+### Training objectives
+
+- Turn notebook code into functions that can be scheduled and tested
+- Combine company overview and trading data into one report
+- Schedule a job with APScheduler: cron or interval trigger, blocking or background scheduler, time zone
+- Make a run finish with the best report it can, say what is missing, and leave a trace
+- Hand your own function and its arguments to the scheduler, and see what happens when a scheduled job fails
+
+So that everyone gets the same numbers, the exercises use prices up to **23 October 2026**; the scheduled job
+uses today's date.
+
+
+## 3.1 Make the pieces reusable
+
+<Info>
+**The request**
+
+Your manager: **"The scheduler will call your code at 07:30. Nobody will be there to run cells in the
+right order."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What makes a piece of code safe to call from a scheduler?
+> - **How we run it:** **Live, about 7 minutes.**
+> - **What you will do:** write the Module 2 calls as functions with parameters and return values, then add one of your own.
+> - **What carries forward:** `get_company_report`, `get_daily_prices` and `summarize_prices`, used in every section below.
+
+A scheduled function gets everything it needs as **parameters** (no variable left over from another cell),
+**returns** its result (the caller decides whether to print, save or send it), and does **one job**. Note the
+`end` parameter: today by default, a fixed date when we want a result we can check.
+
+```python
+import time
+import requests
+import pandas as pd
+from datetime import date, timedelta
+
+BASE_URL = "https://api.sectors.app/v2"
+HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
+TICKERS = ["BBCA", "BBRI", "BMRI", "NISP"]
+END = "2026-10-23"
+
+
+def get_company_report(ticker):
+    response = requests.get(f"{BASE_URL}/company/report/{ticker}/", headers=HEADERS,
+                            params={"sections": "overview"}, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_daily_prices(ticker, days=30, end=None):
+    end = date.fromisoformat(end) if end else date.today()
+    start = end - timedelta(days=days)
+    response = requests.get(f"{BASE_URL}/daily/{ticker}/", headers=HEADERS,
+                            params={"start": str(start), "end": str(end)}, timeout=30)
+    response.raise_for_status()
+    return pd.DataFrame(response.json())
+
+
+get_daily_prices("NISP", end=END).tail(3)
+```
+
+### Your turn: A summary function
+
+Write `summarize_prices(prices)` that takes a price DataFrame and **returns** a dict with `last_date`, `last_close`,
+`daily_change` (last close / previous close − 1) and `period_change` (last close / first close − 1) over the **last 10
+trading days**. Test it on NISP up to `END`. The right result is `last_close` `1185` on `2026-10-23`, `daily_change`
+about `0.0042` (+0.42%) and `period_change` about `-0.0405` (−4.05%).
+
+```python
+## Your code below
+```
+
+### Knowledge check: Ready for a scheduler?
+
+Which version of a function can a scheduler call safely every morning?
+
+- **a.** `def report(): print(prices.tail())` (uses `prices` from an earlier cell)
+- **b.** `def report(ticker): return get_daily_prices(ticker).tail(10)`
+- **c.** `def report(ticker): df = get_daily_prices(ticker); print(df)`
+- **d.** A notebook cell with `ticker = "NISP"` at the top
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 3.2 One report per bank (overview + trading data)
+
+<Info>
+**The request**
+
+Your manager: **"For each bank the RMs want who the company is and what the market did, in one table."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we combine two sources into one row of a report?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** merge the overview and the price summary into one dict per bank, then one Markdown table for all banks.
+> - **What carries forward:** `build_company_report` and `write_report`, which the scheduled job calls in 3.3–3.4.
+
+The overview says **who** (name, market cap); the prices say **what the market did** (close, changes, volume).
+One dict per bank keeps the two together, and the date of the price travels with it:
+
+```python
+def build_company_report(ticker, end=None):
+    report = get_company_report(ticker)
+    prices = get_daily_prices(ticker, end=end).tail(10)
+    close = prices["close"]
+    return {
+        "ticker": ticker,
+        "company_name": report["company_name"],
+        "market_cap": report["overview"]["market_cap"],
+        "last_date": prices["date"].iloc[-1],
+        "last_close": int(close.iloc[-1]),
+        "daily_change": close.iloc[-1] / close.iloc[-2] - 1,
+        "period_change": close.iloc[-1] / close.iloc[0] - 1,
+        "volume_vs_avg": prices["volume"].iloc[-1] / prices["volume"].mean(),
+    }
+
+
+def write_report(rows, failed):
+    lines = [f"# IDX Bank Report, {date.today()}", "",
+             "| Ticker | Company | Last close | Date | 1-day | 10-day | Volume vs avg |",
+             "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['ticker']} | {r['company_name']} | {r['last_close']:,} | {r['last_date']} | "
+                     f"{r['daily_change']:+.2%} | {r['period_change']:+.2%} | {r['volume_vs_avg']:.2f}x |")
+    if failed:
+        lines += ["", "**Not included:** " + ", ".join(failed)]
+    lines += ["", "*Data: Sectors. Not investment advice.*"]
+    return "\n".join(lines)
+
+
+from IPython.display import Markdown
+
+rows = [build_company_report(t, end=END) for t in ["BBCA", "NISP"]]
+Markdown(write_report(rows, failed=[]))
+```
+
+### Your turn: A third source
+
+The RMs also want the newest headline next to each bank. Write `build_company_report_with_news(ticker, end=None)`
+that returns the dict of `build_company_report` plus a key `latest_headline` from the `/news/` endpoint (Module 2,
+`symbols` and `limit=1`). Print the result for BMRI. The right result has all the keys of `build_company_report` (BMRI
+closed at `3900`) plus `latest_headline`, the newest BMRI headline.
+
+```python
+## Your code below
+```
+
+### Knowledge check: The date column
+
+Why does the report show the **date** of each close, and not just today's date in the title?
+
+- **a.** Excel needs a date column
+- **b.** The close is from the last trading day, which can be days before the run (weekend, holiday)
+- **c.** Sectors refuses requests without a date
+- **d.** It makes the table wider
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 3.3 Run it on its own (APScheduler)
+
+<Info>
+**The request**
+
+Your manager: **"07:30 Jakarta time, Monday to Friday. The server is in Singapore and runs on UTC."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we tell code when to run, in the right time zone?
+> - **How we run it:** **Live, about 9 minutes.**
+> - **What you will do:** watch an interval job fire, set a cron job and read its next run time, then schedule your own.
+> - **What carries forward:** the trigger you will use in the example and the exercise.
+
+| Choice | Use it when |
+|---|---|
+| `BlockingScheduler` | the script's only job is the schedule (the `.py` example) |
+| `BackgroundScheduler` | something else must keep running: this notebook, a web app |
+| `"cron"` trigger | fixed times: `day_of_week="mon-fri", hour=7, minute=30` |
+| `"interval"` trigger | every N seconds or minutes (handy for testing) |
+
+`timezone="Asia/Jakarta"` is not optional: on a UTC server, "07:30" without it is 14:30 WIB.
+
+```python
+from apscheduler.schedulers.background import BackgroundScheduler
+
+def tick():
+    print("Job ran at", time.strftime("%H:%M:%S"))
+
+scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
+scheduler.add_job(tick, "interval", seconds=2)
+scheduler.start()
+time.sleep(5)                 # the notebook keeps running; the job fires in the background
+scheduler.shutdown()
+
+scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
+morning = scheduler.add_job(tick, "cron", day_of_week="mon-fri", hour=7, minute=30)
+scheduler.start()
+print("Next morning run:", morning.next_run_time)
+scheduler.shutdown()
+```
+
+### Your turn: Two more schedules
+
+The RMs also want (1) an end-of-day report at **16:15** on weekdays, and (2) during trading hours, an update every
+**30 minutes from 09:00 to 15:30** on weekdays (cron fields accept ranges and steps: `hour="9-15"`, `minute="*/30"`).
+Add both jobs to one `BackgroundScheduler` in Jakarta time, start it, print each job's `next_run_time`, then shut it down.
+The right result is a weekday at `16:15:00+07:00`, and a weekday time on the hour or half hour between 09:00 and 15:30.
+
+```python
+## Your code below
+```
+
+### Knowledge check: The time zone
+
+A job with `hour=7, minute=30` and **no** time zone runs on a server set to UTC. When does it run in Jakarta?
+
+- **a.** 07:30 WIB
+- **b.** 14:30 WIB
+- **c.** 00:30 WIB
+- **d.** It does not run
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Which scheduler?
+
+The report job must run inside a small web app that keeps answering RMs' requests. Which scheduler?
+
+- **a.** `BlockingScheduler`
+- **b.** `BackgroundScheduler`
+- **c.** Either one
+- **d.** A `while True:` loop with `time.sleep`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 3.4 When something breaks at 07:30
+
+<Info>
+**The request**
+
+Your manager: **"If one bank fails, I still want the other three, and I want to know what failed and why."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How does an unattended run fail without failing the whole report?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** run the report with a bad ticker, list what is missing in the report, and keep a log.
+> - **What carries forward:** `run_daily_report`, the function the example script schedules.
+
+Three rules for a run nobody watches: a `try`/`except` **per bank**, so one failure does not stop the others;
+the report **says what is missing**; and a **log line** for every run, so you can see later what happened.
+
+```python
+def run_daily_report(tickers, end=None):
+    rows, failed = [], []
+    for ticker in tickers:
+        try:
+            rows.append(build_company_report(ticker, end=end))
+            print(f"✅ {ticker}")
+        except Exception as e:
+            print(f"❌ {ticker}: {e}")
+            failed.append(ticker)
+
+    os.makedirs("output/reports", exist_ok=True)
+    path = f"output/reports/report_{date.today()}.md"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(write_report(rows, failed))
+    with open("output/run_log.txt", "a", encoding="utf-8") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M')} report: {len(rows)} ok, failed: {failed}\n")
+    return path
+
+
+path = run_daily_report(["BBCA", "XXXX", "NISP"], end=END)
+Markdown(open(path, encoding="utf-8").read())
+```
+
+### Your turn: Why did it fail?
+
+"failed: ['XXXX']" tells the person on duty **what** failed but not **why**. Write `run_with_reasons(tickers, end=None)`
+that returns `(rows, errors)`, where `errors` maps each failed ticker to a short reason: the HTTP status code for an
+`HTTPError` (`e.response.status_code`), otherwise the name of the exception (`type(e).__name__`). Run it for `["BMRI",
+"ZZZZ", "BBRI"]`. The right result is 2 rows (BMRI, BBRI) and `\{'ZZZZ': 404\}`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: One bank fails
+
+At 07:30 one of the four banks fails. What should the RMs find?
+
+- **a.** No report, so nobody uses incomplete data
+- **b.** A report with three banks and a line saying which bank is missing
+- **c.** Four banks, using yesterday's numbers for the failed one without saying so
+- **d.** An empty file
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: The run log
+
+The report looked fine on Monday and Tuesday, but on Wednesday it had only two banks. Where do you look first?
+
+- **a.** The scheduler's settings
+- **b.** The run log: what each run pulled and what failed
+- **c.** The Wikipedia page
+- **d.** Run the notebook again and compare
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 3.5 The scheduler runs the real job
+
+<Info>
+**The request**
+
+Your manager: **"Before we put it on the server, show me the scheduler running the real report, twice, with
+nobody pressing Run."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How do we hand our own function, with its arguments, to the scheduler, and what happens when it fails?
+> - **How we run it:** **Live, about 6 minutes.**
+> - **What you will do:** schedule `run_daily_report` with its arguments, watch the reports and the log appear, then schedule a job that fails.
+> - **What carries forward:** the `add_job(function, trigger, kwargs=...)` call that the example script uses at 07:30.
+
+`add_job` takes the function **itself** (`run_daily_report`, no brackets: the scheduler calls it later) and its
+arguments in `kwargs`. A short interval stands in for "07:30 every weekday", so we can watch two runs in a few seconds:
+
+```python
+scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
+job = scheduler.add_job(run_daily_report, "interval", seconds=8,
+                        kwargs={"tickers": ["BBCA", "NISP"], "end": END})
+scheduler.start()
+print("Scheduled:", job.name, job.kwargs, "| first run at", job.next_run_time)
+
+time.sleep(19)                # two runs happen while we wait
+scheduler.shutdown()
+
+print("\nLast lines of the run log:")
+print("".join(open("output/run_log.txt", encoding="utf-8").readlines()[-2:]))
+```
+
+In the script the only change is the trigger: `"cron", day_of_week="mon-fri", hour=7, minute=30` and a
+`BlockingScheduler`, because a notebook's scheduler stops when the kernel stops.
+
+### Your turn: A job that fails
+
+What does the scheduler do when the job itself raises an error? Write `fragile_job()`, which calls
+`build_company_report("XXXX", end=END)` **without** a `try`/`except`. Schedule it every 3 seconds in a
+`BackgroundScheduler`, let it run for 7 seconds, shut down, and print `"Still running after the errors"`. The right result:
+the error appears twice as a printed `Job "fragile_job ..." raised an exception` traceback (a 404), the notebook does
+**not** stop, and nothing is written to `run_log.txt`: unless the job catches and logs its own errors, nobody at
+07:30 will know.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Handing over the function
+
+Which call schedules the report for the four banks?
+
+- **a.** `scheduler.add_job(run_daily_report(TICKERS), "cron", hour=7, minute=30)`
+- **b.** `scheduler.add_job(run_daily_report, "cron", hour=7, minute=30, kwargs={"tickers": TICKERS})`
+- **c.** `scheduler.add_job("run_daily_report", "cron", hour=7, minute=30)`
+- **d.** `run_daily_report.schedule("07:30")`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: An error inside a job
+
+A scheduled job raises an exception at 07:30. What happens?
+
+- **a.** The scheduler stops, so someone will notice
+- **b.** The scheduler prints the error and runs the job again next time; nobody notices unless the job logs it
+- **c.** The job retries until it works
+- **d.** APScheduler e-mails the error
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Notebook or script?
+
+Why does the real 07:30 job run from `m3_example.py` and not from this notebook?
+
+- **a.** Notebooks cannot import APScheduler
+- **b.** A notebook's scheduler stops when the kernel or the laptop stops; a script can run on a server
+- **c.** Scripts are faster
+- **d.** The cron trigger only works in .py files
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## Module 3 wrap-up
+
+| Piece | In this notebook | In the script |
+|---|---|---|
+| Data | `get_company_report`, `get_daily_prices` | the same functions |
+| Report | `build_company_report`, `write_report` | the same functions |
+| Failures | `run_daily_report` with a `try`/`except` per bank, a log line | the same function |
+| Schedule | `BackgroundScheduler` (the notebook must keep running) | `BlockingScheduler`, `--now` and `--every` for testing |
+| The real job | `add_job(run_daily_report, "interval", kwargs=...)` (3.5) | `add_job(run_daily_report, "cron", ...)` at 07:30 |
+
+**Next:** `day1/examples/m3_example.py --now`, then `--every 20`. Then the exercise `day1/exercises/m3_exercise.py`.
+The report file is what Module 4 gives to the LLM.
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day1/notebooks/m3_automation.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

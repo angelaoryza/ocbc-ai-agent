@@ -1,0 +1,318 @@
+---
+title: "Module 8 notebook: MCP, connecting the agent to Sectors tools"
+description: "Connect to the Sectors MCP server, call its tools, choose the few you need and mix them with your own."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 8 (about 32 minutes). After it come the example script
+`day2/examples/m8_example.py` and the exercise `day2/exercises/m8_exercise.py`. Run it from the top, and run each
+agent cell **once** (quota).
+
+## Background
+
+Your agent has four tools, and you wrote and maintain every one. The RM desk keeps asking for more: foreign flow,
+most traded stocks, broker activity. Sectors already runs an **MCP server** with 66 ready-made tools. With **MCP**
+your code connects to it, discovers the tools, keeps the few the job needs, and gives them to the agent next to your own:
+
+- **8.1 Connect and discover.** Transport, client, adapter; the list of tools.
+- **8.2 Call an MCP tool.** The server's own argument names; `await`.
+- **8.3 Choose the tools.** From 66 to the few a job needs, by reading descriptions.
+- **8.4 Mix MCP tools with your own.** One agent, tools from two places.
+
+Who is the MCP **client**? **Our code**, not the LLM. The LLM still only asks for tool calls.
+
+### Training objectives
+
+- Connect to the Sectors MCP server with `StreamableHttpTransport`, `Client` and `MCPAdapter`
+- Read an MCP tool's description and arguments, and call it with `await`
+- Choose the MCP tools a job needs by searching their descriptions
+- Build an agent with MCP tools and your own tools, and call it with `await agent.ainvoke(...)`
+
+MCP tools are **asynchronous**: in a notebook you can write `await` directly in a cell.
+
+
+## 8.1 Connect and discover
+
+<Info>
+**The request**
+
+Your manager: **"Before we write another tool ourselves, see what Sectors already offers."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How does our code connect to an MCP server, and what does it get back?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** open a connection, list the tools, and look at their names.
+> - **What carries forward:** `transport` and `tools`, used in every section below.
+
+| Piece | Here |
+|---|---|
+| **Transport**: how to reach the server | `StreamableHttpTransport(url=SECTORS_MCP_URL, headers={"Authorization": <Sectors key>})` |
+| **Client**: our side of the connection | `Client(transport)` from `fastmcp` |
+| **Adapter**: MCP tools → LangChain tools | `MCPAdapter(...)` from `langchain.mcp`, as in `learning-agent/` |
+
+`async with` opens the session and closes it at the end of the block.
+
+```python
+from langchain.mcp import MCPAdapter
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+transport = StreamableHttpTransport(
+    url=os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
+    headers={"Authorization": os.getenv("SECTORS_API_KEY")},
+)
+
+async with MCPAdapter(Client(transport)) as sector:
+    tools = await sector.list_tools()
+
+print(len(tools), "tools on the Sectors MCP server")
+print([t.name for t in tools][:12])
+```
+
+### Knowledge check: Who is the client?
+
+In our system, which part is the MCP **client**?
+
+- **a.** Gemini
+- **b.** Our Python code (`fastmcp.Client`)
+- **c.** The Sectors server
+- **d.** The RM's browser
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: When is MCP worth it?
+
+When is connecting to an MCP server better than writing our own `@tool` around the REST API?
+
+- **a.** Always
+- **b.** Never
+- **c.** When a provider already maintains many tools we want to reuse
+- **d.** Only for Singapore data
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 8.2 Call an MCP tool
+
+<Info>
+**The request**
+
+An RM: **"How did BBCA trade in the week of 14 to 23 October?"** Use the server's tool, not ours.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What does an MCP tool look like, and how do we call it ourselves?
+> - **How we run it:** **Live, about 7 minutes.**
+> - **What you will do:** read a tool's description and arguments, call it with `await`, then call another one yourself.
+> - **What carries forward:** the habit of reading `.args` before using a server's tool.
+
+An MCP tool is a LangChain tool like ours: a **name**, a **description** and **arguments**, but it runs on the Sectors
+server. Its arguments are the **server's** names: `symbol` instead of our `ticker`, and `sections` as a **list**.
+
+```python
+async with MCPAdapter(Client(transport)) as sector:
+    tools = await sector.list_tools()
+    report_tool = next(t for t in tools if t.name == "fetch-company-report")
+    print(report_tool.description[:250], "...")
+    print(list(report_tool.args))
+    nisp = await report_tool.ainvoke({"symbol": "NISP", "sections": ["overview"]})
+
+print(str(nisp)[:300])
+```
+
+### Your turn: Call fetch-daily-price
+
+Find the tool `fetch-daily-price`, print its argument names, then call it for **BBCA** from `2026-10-14` to `2026-10-23`.
+Print the first 300 characters of the result. The right result contains the closes of BBCA for those dates, ending with
+`5025` on `2026-10-23`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Why `await`?
+
+Why is the agent in this module called with `await agent.ainvoke(...)` instead of `agent.invoke(...)`?
+
+- **a.** `ainvoke` is cheaper
+- **b.** MCP tools are asynchronous: they wait on the network, so the agent must run asynchronously
+- **c.** Gemini requires it
+- **d.** It runs the tools in parallel on Google's servers
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 8.3 Choose the tools
+
+<Info>
+**The request**
+
+Your manager: **"The RM desk wants foreign flow and the most traded stocks. Which of the 66 tools do we need?"**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How many MCP tools should an agent get, and how do we find the right ones?
+> - **How we run it:** **Live, about 6 minutes.**
+> - **What you will do:** measure what all 66 descriptions cost, keep a few by name, then find tools for a new job by searching descriptions.
+> - **What carries forward:** `SELECTED`, the tools the agent gets in 8.4.
+
+Every tool description is sent with **every** model call. Compare all 66 with the three our agent needs:
+
+```python
+SELECTED = ["fetch-company-report", "fetch-daily-price", "fetch-companies-top-changes"]
+
+all_chars = sum(len(t.description) for t in tools)
+selected_chars = sum(len(t.description) for t in tools if t.name in SELECTED)
+print(f"All {len(tools)} descriptions: {all_chars:,} characters. The {len(SELECTED)} we keep: {selected_chars:,}")
+```
+
+### Your turn: Find the tools for a new job
+
+Without reading all 66 by eye, search the **descriptions** (lower case; leave out tools whose name contains `sgx` or
+`klse`, which are other markets). First search for `"foreign"` and print the matches with the first line of each description:
+you will get several tools, because brokers and shareholders can be foreign too. Then narrow it: search for `"foreign flow"`
+and for `"most traded"`, and keep those names in `TRADING_TOOLS`. The right result is `['fetch-foreign-flow',
+'fetch-most-traded-stocks']`: reading the descriptions, not guessing from names, is how you choose.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Why not all 66?
+
+Why not give the agent all 66 Sectors tools?
+
+- **a.** MCP allows only five
+- **b.** Every description goes into every prompt: more cost, and the LLM picks the wrong tool more often
+- **c.** Gemini refuses more than ten
+- **d.** The other tools are not free
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 8.4 Mix MCP tools with your own
+
+<Info>
+**The request**
+
+An RM: **"How did BMRI trade last week, and what does the news say about why?"** Prices from Sectors' server,
+reasons from **our** saved news.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How does one agent use tools from the server and from our program?
+> - **How we run it:** **Live, about 10 minutes.**
+> - **What you will do:** add the Module 6 `search_news` tool to the MCP tools, run the agent with `await`, then build an agent for the new job.
+> - **What carries forward:** the mixed agent that the example and the exercise build.
+
+The agent sees one list of tools; where each runs does not matter to the model. **Rule of thumb:** MCP for the
+provider's data, our own tools for what only we have (our saved news, our actions). The `search_news` tool is the same
+as in Module 6. One new line in the system prompt: **today's date**. Our Module 6 tools computed dates in code; the MCP
+tools take `start` and `end`, and the model does not know what day it is.
+
+```python
+import json
+from langchain.tools import tool
+from langchain.agents import create_agent
+from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+
+llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=os.getenv("GEMINI_API_KEY"))
+
+docs, seen = [], set()
+for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
+    with open(f"data/sample/news_{ticker}.json", encoding="utf-8") as f:
+        for article in json.load(f):
+            if article["title"] not in seen:
+                seen.add(article["title"])
+                docs.append(Document(page_content=article["title"] + "\n\n" + article["body"],
+                                     metadata={"title": article["title"], "date": article["timestamp"][:10]}))
+vector_store = InMemoryVectorStore.from_documents(
+    RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100).split_documents(docs), embeddings)
+
+
+@tool
+def search_news(query: str) -> str:
+    """Search recent Indonesian market news. Use it to find WHY something happened
+    (events, announcements, reasons). It does not give prices.
+    Args:
+        query: what to look for, in plain words.
+    """
+    results = vector_store.similarity_search(query, k=4)
+    return "\n\n".join(f"{d.metadata['title']} ({d.metadata['date']})\n{d.page_content}" for d in results)
+
+
+from datetime import date
+
+SYSTEM_PROMPT = f"""You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Today is {date.today()}. The MCP tools take explicit dates: work them out from today.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Use search_news to explain why something happened. Never give buy, sell or hold advice."""
+
+
+def tools_used(result):
+    return [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+
+
+async with MCPAdapter(Client(transport)) as sector:
+    tools = await sector.list_tools()
+    agent = create_agent(model=llm, tools=[t for t in tools if t.name in SELECTED] + [search_news],
+                         system_prompt=SYSTEM_PROMPT)
+    result = await agent.ainvoke({"messages": [{"role": "user", "content":
+        "How did BMRI trade over the last week, and what does the news say about why?"}]})
+
+print("Tools used:", tools_used(result))
+print(result["messages"][-1].text)
+```
+
+### Your turn: An agent for the trading desk
+
+Build an agent with your `TRADING_TOOLS` (from 8.3) plus `search_news`, inside one `async with` block, and ask
+*"Was BBRI bought or sold by foreign investors over the last two weeks, and what does the news say about it?"* Print the tools
+used and the answer. The right result uses `fetch-foreign-flow` with `symbol` `BBRI` **and** `search_news`, and the answer
+says whether the net foreign flow was positive (buying) or negative (selling), with dates.
+
+```python
+## Your code below
+```
+
+### Knowledge check: MCP or our own tool?
+
+The RMs want the agent to search **OCBC's internal research notes**. Where should that tool come from?
+
+- **a.** The Sectors MCP server
+- **b.** Our own `@tool`, in our program: it is our data, not the provider's
+- **c.** Gemini's built-in search
+- **d.** It cannot be a tool
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## Module 8 wrap-up
+
+| Idea | In code |
+|---|---|
+| Connect | `StreamableHttpTransport` → `Client` → `MCPAdapter`, inside `async with` |
+| Discover | `await sector.list_tools()`: 66 LangChain tools |
+| Call | `await tool.ainvoke({...})` with the server's argument names |
+| Choose | keep a few by name; search descriptions to find them |
+| Mix | `create_agent(tools=mcp_tools + [search_news])`, `await agent.ainvoke(...)` |
+
+**Next:** `day2/examples/m8_example.py`, then the exercise `day2/exercises/m8_exercise.py`. In Module 9 the scheduler
+from Day 1 wakes this agent up.
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day2/notebooks/m8_mcp.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

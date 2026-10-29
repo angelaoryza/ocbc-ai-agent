@@ -1,0 +1,117 @@
+---
+title: "Module 5: RAG over the saved news"
+description: "Retrieval-augmented generation: when the data is too large to give the model, select by meaning."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+*Module 5 goes beyond the syllabus. It extends retrieval (Module 1) to the news saved in Module 2, and on Day 2 its search becomes a tool the agent can call.*
+
+The morning report is small, and all of it is relevant. A collection of news articles is different: it grows every day, and a question such as *“Why did the bank stocks fall on 16 October?”* needs perhaps two of them. Module 5 answers a new design question: **what do we do when the data is too large to give the model, and only a small part matters for each question?**
+
+The answer is **retrieval-augmented generation (RAG)**: find the few passages that match the question, give only those to the model, and ask it to answer from them with citations. On the control ladder this is the second rung. Our code no longer decides which data the model sees; **the user’s question does**.
+
+<Frame caption="The RAG pipeline: indexing once, then retrieval for every question">
+  <img src="/images/day1/rag-pipeline.png" alt="The RAG pipeline: indexing once, then retrieval for every question" />
+</Frame>
+
+## 5.1 The selection problem
+
+Pasting every saved article into every prompt seems simple. It fails in four ways:
+
+| Problem | Why it matters |
+|----|----|
+| **Size** | Seventy articles are already about 19,000 tokens. A year of news for a whole sector would not fit at all |
+| **Cost and speed** | Every token is paid for, and processed, on every question |
+| **Dilution** | Asked to find two relevant paragraphs among a hundred, the model gives vaguer answers and is more easily misled by an irrelevant one |
+| **No traceability** | With everything in the prompt, it is hard to show which source supports which claim |
+
+So the system must **select**, and by **meaning**, because people rarely use the document’s words: the question says “drop”, the article says “sell-off”. When the data is small and all of it is needed, paste it instead: retrieval might leave something out.
+
+## 5.2 How RAG works
+
+RAG has two phases, which happen at different times:
+
+| Phase | When | Steps |
+|----|----|----|
+| **Indexing** | Once, and again when new documents arrive | Split the documents into chunks; turn each chunk into a vector that represents its meaning; store chunk and vector together |
+| **Retrieval and answer** | For every question | Turn the question into a vector; find the chunks with the closest meaning; put them in the prompt as numbered sources; ask the model to answer from them, citing the numbers |
+
+Indexing processes every document, but once; each question processes only itself and a few chunks. That is what makes RAG affordable.
+
+## 5.3 Splitting documents into chunks
+
+Retrieval does not return whole articles; it returns **chunks**, pieces of documents. A good chunk is **about one thing** and **understandable on its own**. Chunk size is a trade-off:
+
+|  | Too small | Too large |
+|----|----|----|
+| What happens | A chunk lacks context: “It fell 9% that day” without saying what fell | A chunk covers several topics, so it matches many questions loosely and none precisely |
+| Effect on answers | The model gets fragments | The model gets mostly irrelevant text |
+
+A small **overlap** between neighbouring chunks keeps a sentence that falls on a boundary from losing its meaning. A good splitter cuts at natural boundaries first (paragraphs, then sentences) and only cuts mid-sentence when it must.
+
+**Metadata travels with every chunk.** Each chunk keeps its article’s title, date, source address and the tickers it concerns. Metadata makes two essential things possible: **filtering** (only chunks about NISP, only articles from this month) and **citation** (every source in the answer has a title, a date and a link a person can open).
+
+**Clean the collection first.** A document saved twice looks twice as relevant; remove duplicates before indexing. RAG quality starts in the data layer.
+
+## 5.4 Embeddings: Representing meaning as numbers
+
+An **embedding** is a long list of numbers, a **vector**, that represents the meaning of a piece of text. An embedding model is trained so that texts with similar meanings get vectors that point in similar directions, even when they share no words. “Foreign investors sold bank shares” and “Why did bank stocks drop?” end up close together; “The weather in Jakarta was sunny” ends up far away.
+
+How close two vectors are is measured by **cosine similarity**, which compares their directions: close to 1 for very similar meanings, close to 0 for unrelated ones. **Semantic search** is simply this: embed the question, compare it with every chunk, and keep the closest.
+
+Embeddings are powerful but not magic, and knowing their weaknesses helps you judge when retrieval will struggle:
+
+| Embeddings are good at | Embeddings are weaker at |
+|----|----|
+| Synonyms and paraphrases (“drop” and “sell-off”) | Exact numbers and codes (“Q3 2026”, a specific ticker in a long list) |
+| Questions phrased very differently from the text | Negation (“articles that are *not* about MSCI”) |
+| Cross-language similarity, to a degree | Rare names the model has seen little of |
+
+This is why practical systems combine semantic search with **filters** on metadata (the ticker, the date) and sometimes with ordinary **keyword search**. The filter handles what must match exactly; the embedding handles what must match in meaning.
+
+## 5.5 Storing and retrieving
+
+A **vector store** keeps each chunk with its vector and returns the closest ones to a question. A store in memory is enough for a few hundred chunks; large collections, many users and access control call for a vector database.
+
+Three settings decide what retrieval returns:
+
+| Setting | Question it answers | Trade-off |
+|----|----|----|
+| **How many chunks (k)** | How much evidence goes to the model? | Too few can miss the answer; too many dilute it |
+| **Filters** | Which chunks are allowed at all? | Precise and cheap, but only as good as the metadata |
+| **The query** | What text is compared? | Usually the question as asked; sometimes rephrased for search |
+
+**Retrieval quality is the heart of RAG.** If the right chunk is not retrieved, no model can answer correctly from what it was given. When a RAG answer is poor, look first at what was retrieved. Most RAG problems are retrieval problems, not writing problems.
+
+## 5.6 Grounded answers with citations
+
+The retrieved chunks go into the prompt as **numbered sources**, with the same grounding discipline as Module 4:
+
+| Rule | Why |
+|----|----|
+| Use only the sources between the tags | No outside knowledge, no invented facts |
+| Cite the sources as \[1\], \[2\] | Every claim can be traced and checked |
+| If the sources do not cover the question, say so | A clear “the saved news does not cover this” is better than a plausible guess |
+| No buy, sell or hold advice | The same safety rule as every other answer |
+
+The answer is returned **with its list of sources** (title, date, link), so the reader can open the article behind each citation. A simple check catches a common failure: every citation number must refer to a source that was actually sent. A citation to source \[7\] when only four were sent is an invented citation.
+
+**Diagnosing a poor answer** follows the pipeline backwards:
+
+| Symptom | Likely cause | Where to look |
+|----|----|----|
+| “The saved news does not cover this”, but it does | The right chunk was not retrieved | The query, k, the filters, the chunk size |
+| A confident answer citing the wrong article | A loosely related chunk ranked highly | The retrieved chunks and their similarity |
+| An answer with facts not in any source | The model ignored the grounding rules | The prompt’s rules; the output check |
+| Old news presented as current | Dates not used or not shown | The metadata and the prompt |
+
+On Day 2 the model itself starts choosing the data, and this search becomes one of its tools.
+
+<Info>
+**Questions to think about**
+
+- Think of a large collection of documents in your own work. What would a chunk be, and what metadata would you need to filter and cite it?
+- Write one question a colleague might ask whose answer uses different words from the documents. Why would keyword search fail, and would embeddings succeed?
+- When would pasting the whole document into the prompt be better than retrieval for that collection?
+</Info>

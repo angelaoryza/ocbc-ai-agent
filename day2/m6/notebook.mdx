@@ -1,0 +1,392 @@
+---
+title: "Module 6 notebook: tools for an AI-based system"
+description: "Turn Sectors functions into tools, follow one tool call end to end, and make the news search a tool."
+sidebarTitle: "Notebook walkthrough"
+icon: "notebook"
+---
+
+<Note>
+This page follows the notebook cell by cell, without outputs. The notebook's first cells handle setup for you: they load your keys from `.env`, move to the course folder and prepare the knowledge checks.
+</Note>
+
+This notebook is the hands-on part of Module 6 (about 38 minutes). After it come the example script
+`day2/examples/m6_example.py` and the exercise `day2/exercises/m6_exercise.py`. Run it from the top, and run each
+LLM cell **once** (quota).
+
+## Background
+
+Day 1 in one line: *we tell the LLM what the data is.* Day 2: **the LLM asks for the data it needs.**
+
+The RMs now want to ask anything: *"How did NISP close?"*, *"Which bank has the best ROE?"*, *"Why did BBRI fall?"*
+You cannot write a script for every question. Instead, you give the LLM **tools** (your Day 1 functions with a
+description) and let it ask for the one a question needs:
+
+- **6.1 From function to tool.** What `@tool` turns a function into.
+- **6.2 How tool calling works.** The LLM asks; our code runs. One round trip by hand.
+- **6.3 The description decides.** Why the docstring is the most important line.
+- **6.4 The news search becomes a tool.** Module 5's retriever as `search_news`.
+- **6.5 Choosing the tools.** Few tools, read apart from action.
+
+| Step on the ladder | Who decides WHICH data | Who decides WHEN |
+|---|---|---|
+| Report in the prompt (M3–M4) | Our code | The scheduler |
+| RAG (M5) | The user's question | The user |
+| **Tool calling (M6)** | **The LLM, one choice** | **The user asks, the LLM picks** |
+| Agent (M7) | The LLM, step by step | The LLM |
+
+### Training objectives
+
+- Turn a Sectors function into a tool with `@tool`, and read what the LLM sees
+- Run one tool call by hand: the LLM's request, our code running it, the result back to the LLM
+- Write descriptions and arguments that make the LLM choose the right tool with the right arguments
+- Turn the Module 5 retriever into a `search_news` tool
+- Choose the few tools an agent needs, and tell read tools from action tools
+
+
+## 6.1 From function to tool
+
+<Info>
+**The request**
+
+An RM: **"How did NISP close?"** You already have the function. Now the LLM must be able to use it.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** What does the LLM see of a tool?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** decorate two Sectors functions with `@tool`, read their name, description and arguments, then write a tool yourself.
+> - **What carries forward:** `get_company_overview` and `get_daily_prices`, used in every section below.
+
+`@tool` reads three things: the function **name**, the **docstring** (the description the LLM reads) and the
+**arguments with their types**. The LLM never sees the code inside. A tool is still a function: our code calls it with
+`.invoke({...})`.
+
+```python
+import requests
+from datetime import date, timedelta
+from langchain.tools import tool
+
+BASE_URL = "https://api.sectors.app/v2"
+HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
+
+
+@tool
+def get_company_overview(ticker: str) -> dict:
+    """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
+    Use it for questions about a single company, e.g. "How did NISP close?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
+    """
+    response = requests.get(f"{BASE_URL}/company/report/{ticker}/", headers=HEADERS,
+                            params={"sections": "overview"}, timeout=30)
+    return response.json()
+
+
+@tool
+def get_daily_prices(ticker: str, days: int = 10) -> list:
+    """Get the daily closing prices and volumes of one IDX company for the last `days` calendar days.
+    Use it for questions about how a stock moved recently, e.g. "How did BMRI do this week?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BMRI.
+        days: how many calendar days back to look (a week is 7).
+    """
+    end = date.today()
+    response = requests.get(f"{BASE_URL}/daily/{ticker}/", headers=HEADERS,
+                            params={"start": str(end - timedelta(days=days)), "end": str(end)}, timeout=30)
+    return response.json()
+
+
+print("Name:", get_company_overview.name)
+print("Description:", get_company_overview.description)
+print("Arguments:", get_company_overview.args)
+print(get_company_overview.invoke({"ticker": "NISP"})["overview"]["last_close_price"])
+```
+
+### Your turn: A ranking tool
+
+Write the tool `get_top_banks(metric: str = "market_cap", n: int = 5) -> dict` that ranks the banks with the
+Sectors screener (Module 2: `/companies/`, `where` on `sub_sector='banks'`, `order_by` on `-{metric}`, `limit`,
+`include_query_values`). The docstring must say what it returns, when to use it, and list the metrics the LLM may use:
+`market_cap`, `roe_ttm` (return on equity), `pe_ttm`, `pb_mrq`, `yield_ttm`. Invoke it for `roe_ttm` with `n=3` and
+print the symbols. The right result is 3 bank symbols, and `get_top_banks.args` shows `metric` and `n`.
+
+```python
+## Your code below
+```
+
+### Knowledge check: What the LLM sees
+
+Which part of a tool does the LLM **not** see?
+
+- **a.** The name
+- **b.** The docstring
+- **c.** The argument names and types
+- **d.** The code inside the function
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 6.2 How tool calling works
+
+<Info>
+**The request**
+
+Your manager: **"Before we trust it, show me exactly who does what when the LLM 'uses' a tool."**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** Who runs the tool: the LLM or our code?
+> - **How we run it:** **Live, about 10 minutes.**
+> - **What you will do:** bind tools to the model, read the tool call, run it, send the result back, and get the answer; then do a round trip yourself.
+> - **What carries forward:** the round trip that `create_agent` automates in Module 7.
+
+1. We send the question **and the tool descriptions** (`llm.bind_tools(tools)`).
+2. The LLM answers with a **tool call**: a name and arguments. It runs nothing.
+3. **Our code** runs the tool and sends the result back as a `ToolMessage` with the call's `id`.
+4. The LLM writes the answer from the result.
+
+```python
+from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+
+tools = [get_company_overview, get_daily_prices]
+tools_by_name = {t.name: t for t in tools}
+llm_with_tools = llm.bind_tools(tools)
+
+messages = [HumanMessage("How did NISP close on its last trading day?")]
+ai_message = llm_with_tools.invoke(messages)               # step 2: the LLM asks
+print("Text:", repr(ai_message.text))
+print("Tool calls:", ai_message.tool_calls)
+```
+
+```python
+messages.append(ai_message)
+for call in ai_message.tool_calls:                          # step 3: OUR code runs the tool
+    result = tools_by_name[call["name"]].invoke(call["args"])
+    messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+
+final = llm_with_tools.invoke(messages)                     # step 4: the LLM answers from the result
+print(final.text)
+```
+
+### Your turn: A round trip of your own
+
+Do the four steps yourself for *"How did BMRI shares do over the past week?"*: a new message list, the LLM's tool
+call, your code running it, the `ToolMessage`, the final answer. Print the tool call and the answer. The right result is
+a call to `get_daily_prices` with `ticker` `BMRI` and `days` about 7, and an answer that quotes BMRI's closes.
+
+```python
+## Your code below
+```
+
+### Knowledge check: Who runs it?
+
+When the LLM "uses" `get_daily_prices`, where does the request to Sectors come from?
+
+- **a.** From Google's servers, run by Gemini
+- **b.** From our program, which runs the tool the LLM asked for
+- **c.** From Sectors, which reads the prompt
+- **d.** From LangChain's cloud
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 6.3 The description decides
+
+<Info>
+**The request**
+
+An RM: **"Which three banks have the highest return on equity?"** Will the LLM pick your ranking tool?
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How does the LLM choose a tool, and its arguments?
+> - **How we run it:** **Live, about 7 minutes.**
+> - **What you will do:** offer the same function with a vague and a clear description, then test your own `get_top_banks`.
+> - **What carries forward:** the docstring habits for every tool in Modules 7–9.
+
+```python
+@tool
+def tool_a(ticker: str) -> list:
+    """Gets data."""
+    return get_daily_prices.invoke({"ticker": ticker, "days": 7})
+
+
+@tool
+def tool_b(ticker: str) -> list:
+    """Daily closing prices of one IDX stock for the last 7 days.
+    Use it for questions like "How did BMRI do this week?".
+    Args:
+        ticker: 4-letter IDX code, e.g. BMRI.
+    """
+    return get_daily_prices.invoke({"ticker": ticker, "days": 7})
+
+
+choice = llm.bind_tools([tool_a, tool_b]).invoke("How did BMRI shares do over the past week?")
+print("The LLM picked:", [c["name"] for c in choice.tool_calls])
+```
+
+### Your turn: Test your description
+
+Bind `get_company_overview`, `get_daily_prices` and **your** `get_top_banks` and ask *"Which three banks have the
+highest return on equity?"* Print the tool calls. The right result is `get_top_banks` with `metric` `roe_ttm` and `n` 3.
+If the LLM picks another tool or another metric, improve your docstring and try again: that is the skill.
+
+```python
+## Your code below
+```
+
+### Knowledge check: No tool call
+
+`response.tool_calls` is empty and the answer contains a price that looks made up. The most likely cause?
+
+- **a.** The tools were not bound, or no description matches the question
+- **b.** The Sectors key is wrong
+- **c.** The tool returned too much data
+- **d.** The internet is slow
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 6.4 The news search becomes a tool
+
+<Info>
+**The request**
+
+An RM: **"Why did BBRI fall so sharply in mid October?"** Prices say *that* it fell; the news says *why*.
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How does a retriever become a tool, and how can the LLM narrow the search?
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** rebuild the Module 5 vector store, wrap the search in `search_news`, then give it a ticker argument.
+> - **What carries forward:** `search_news`, which the agent uses in Modules 7–9.
+
+In Module 5 every question searched the news. As a tool, the LLM decides **when** to search, and writes the search
+words itself. The vector store is rebuilt from the saved news (the same `data/sample/` copy as in Module 5):
+
+```python
+import json
+from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=os.getenv("GEMINI_API_KEY"))
+
+docs, seen = [], set()
+for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
+    with open(f"data/sample/news_{ticker}.json", encoding="utf-8") as f:
+        for article in json.load(f):
+            if article["title"] not in seen:
+                seen.add(article["title"])
+                docs.append(Document(page_content=article["title"] + "\n\n" + article["body"],
+                                     metadata={"title": article["title"], "date": article["timestamp"][:10], "ticker": ticker}))
+
+chunks = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100).split_documents(docs)
+vector_store = InMemoryVectorStore.from_documents(chunks, embeddings)
+
+
+@tool
+def search_news(query: str) -> str:
+    """Search recent Indonesian market news. Use it to find WHY something happened
+    (events, announcements, reasons). It does not give prices: use the price tools for numbers.
+    Args:
+        query: what to look for, in plain words.
+    """
+    results = vector_store.similarity_search(query, k=4)
+    return "\n\n".join(f"{d.metadata['title']} ({d.metadata['date']})\n{d.page_content}" for d in results)
+
+
+print(len(chunks), "chunks")
+print(llm.bind_tools([get_company_overview, get_daily_prices, search_news]).invoke(
+    "Why did BBRI shares fall so sharply in mid-October 2026?").tool_calls)
+```
+
+### Your turn: Let the LLM narrow the search
+
+Write `search_bank_news(query: str, ticker: str = "")`: the same search, but when `ticker` is given it keeps only
+chunks of that bank (the metadata filter from Module 5). Say in the docstring when to fill `ticker`. Bind it with
+`get_daily_prices` and ask *"Why did BBRI shares fall so sharply in mid-October 2026?"* The right result is a call to
+`search_bank_news` with `ticker` `BBRI` and a query about the fall (often together with a `get_daily_prices` call).
+
+```python
+## Your code below
+```
+
+### Knowledge check: When to search
+
+With both the price tools and `search_news` bound, which question should lead to `search_news`?
+
+- **a.** How did NISP close yesterday?
+- **b.** Which bank has the highest ROE?
+- **c.** What did OCBC NISP announce about acquisitions?
+- **d.** What was BMRI's volume on Friday?
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## 6.5 Choosing the tools
+
+<Info>
+**The request**
+
+Your manager: **"Can we give the agent all 30 functions we have, just in case?"**
+</Info>
+
+> **In this section**
+>
+> - **Key question:** How many tools, and which kind?
+> - **How we run it:** **Discussion, about 5 minutes.**
+> - **What you will do:** decide which tools a job needs and which need a person's approval.
+> - **What carries forward:** the tool list of the Module 7 agent.
+
+Every tool description is sent with **every** call: more tools means a longer prompt and more chances of the wrong
+choice. Give an agent the **3 to 5 tools** its job needs. Keep **read** tools (they fetch data) apart from **action**
+tools (they change something: save a file, send an email); action tools need a person's approval (Module 7). And when
+your code already knows which data is needed, as for the 07:30 report, call the function directly: no tool needed.
+
+### Knowledge check: Tools for a chatbot
+
+A chatbot answers *"Which banks are the largest?"*, *"How did NISP trade this week?"* and *"Why did BBRI fall?"*.
+Which tools should it get?
+
+- **a.** All the tools we have
+- **b.** `get_top_banks`, `get_daily_prices`, `search_news`
+- **c.** `get_company_overview` only
+- **d.** `search_news` only: the news mentions prices
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+### Knowledge check: Read or action?
+
+Which tool needs a person's approval before it runs?
+
+- **a.** `get_top_banks`
+- **b.** `search_news`
+- **c.** `send_email_to_client`
+- **d.** `get_daily_prices`
+
+Answer this in the notebook; the check cell tells you if you are right.
+
+## Module 6 wrap-up
+
+| Idea | In code |
+|---|---|
+| A tool = function + description | `@tool`, docstring, typed arguments |
+| The LLM only asks | `llm.bind_tools(tools)` → `response.tool_calls` |
+| Our code runs it | `tool.invoke(call["args"])` → `ToolMessage(..., tool_call_id=call["id"])` |
+| The description decides | when to use it, what it returns, allowed values |
+| Few tools, read vs action | 3–5 tools; actions need approval |
+
+**Next:** `day2/examples/m6_example.py`, then the exercise `day2/exercises/m6_exercise.py`: two new Sectors tools and
+the round trip as a function. In Module 7 `create_agent` runs this loop for us, as many rounds as needed.
+
+## Open it locally
+
+1. Open the course folder in VS Code.
+2. Open `day2/notebooks/m6_tools.ipynb`.
+3. Choose the `.venv` interpreter as the kernel.
+4. Run the cells from the top: each section uses what the previous one produced.

@@ -1,0 +1,178 @@
+---
+title: "Module 1: Advanced AI capabilities and agentic systems overview"
+description: "What a system around the model needs, and who decides what, in three stages: collect, connect, act."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Participants already use AI chat tools and write good prompts. This module changes the question from *“What can the model do?”* to *“What does a system around the model need, and who decides what?”* A chat window is one person, one model and one conversation; a system serves many people, runs when nobody is watching, works with the bank’s data and sometimes takes actions. Designing one needs a way of thinking in three stages:
+
+1.  **Collect the data.** What must the system know that the model does not?
+2.  **Connect the data to the model.** How does the right data reach the model at the right moment, and how does the model’s answer reach the rest of the system?
+3.  **Decide the actions.** What may the system do, who decides which step comes next, and when does it run?
+
+Every advanced capability (live retrieval, tool use, structured output, memory, skills, multi-agent systems) fits into one of these stages. Learn the stages, and the capabilities become design choices rather than buzzwords.
+
+<Frame caption="Three stages of an AI system: collect, connect, act, with guardrails across all three">
+  <img src="/images/day1/three-stages-of-an-ai-system.png" alt="Three stages of an AI system: collect, connect, act, with guardrails across all three" />
+</Frame>
+
+## 1.1 What a large language model is, and what it is not
+
+A **large language model (LLM)** is trained on a very large amount of text to do one thing: given some text, predict what comes next, one small piece (a **token**) at a time. That gives it a wide command of language, facts and patterns of reasoning: it can explain a balance sheet, translate an email or write Python. The same mechanism explains its limits, and those limits are the starting point of every design:
+
+| The model… | Because… | So the system must… |
+|----|----|----|
+| does not know anything after its training date | it only knows the text it was trained on | bring in current data (stage 1) |
+| has never seen the bank’s data or today’s prices | that data was never in its training text | fetch the data and put it in front of the model (stages 1 and 2) |
+| can write a fluent, confident, wrong number | it produces *likely* text, not *checked* text | ground it in data and check its output (stage 2) |
+| remembers nothing between calls | each call is independent | send everything it needs, every time (stage 2) |
+| cannot do anything by itself | it only produces text | let code carry out actions, under rules (stage 3) |
+
+A **hallucination** is an answer that sounds right but is not supported by any fact. It is not a bug to be fixed in the next version; it is what a model does when asked about something it does not know. The cure is not a better model but a system that gives the model the facts and tells it to use nothing else. What the model *is* good at is everything around the facts: reading, summarizing, explaining, extracting fields from messy text, and choosing between options.
+
+**Model or plain code?** A useful test for every step of a design:
+
+| If the step is… | Use | Example |
+|----|----|----|
+| exact, repeatable, rule-based | plain code | computing a 10-day price change; checking a 2% threshold |
+| about language or judgement on text | the model | turning a table into four readable sentences; finding the article that explains a price drop |
+| a choice between known options, based on a free-text request | the model, with the options described | deciding whether a question needs prices, a ranking or the news |
+
+A model will *usually* get arithmetic or a fixed rule right, and “usually” is not good enough for a number someone repeats to a client.
+
+## 1.2 Where AI fits in building your own system
+
+Once you accept that the model is one component, the shape of a system follows. Around the model sit layers of ordinary software, each answering one of the three stages:
+
+| Stage | Layer | Its job | In this course |
+|----|----|----|----|
+| Collect | **Data** | Fetch facts from APIs, web pages and databases; clean and store them | Module 2 |
+| Collect | **Automation** | Run the collection on a schedule; survive failures | Module 3 |
+| Connect | **Prompt and retrieval** | Choose which data the model sees for this request, and present it clearly | Modules 4 and 5 |
+| Connect | **Output handling** | Turn the model’s reply into something code can use and check | Module 4 |
+| Act | **Tools and agent** | Let the model request data and actions through code we control | Day 2 |
+| Act | **Interface** | Where people meet the system: a chatbot, a web page, an email, an alert | Day 3 |
+| All | **Guardrails** | Keys, data rules, approval, logging | Every module |
+
+Two observations surprise most first-time builders: **most of the code is not AI** (it is data handling, scheduling, error handling and security), and **most failures are not model failures** (a wrong answer usually comes from wrong, missing or badly presented data). The quality of an AI system is decided mostly by the layers around the model.
+
+**The control ladder.** One design question runs through the whole course: *who decides which data the model sees, and when?* There are several possible answers, and each gives the model a little more freedom.
+
+| Who decides which data | Who decides when | Example | Module |
+|----|----|----|----|
+| Our code | A schedule | Every morning, the four banks’ report goes into the prompt | 3–4 |
+| The user’s question | The user | The question is matched against saved news; the closest articles go in | 5 |
+| The model, one choice | The user asks | The model chooses which tool to call for this question | 6 |
+| The model, step by step | The model | The model calls a tool, reads the result, decides the next step | 7 |
+| The model | A schedule or a condition | A big price move starts an agent that investigates | 9 |
+
+Higher on the ladder means more flexible and less predictable. **A good system climbs only as high as the task needs**: a fixed morning digest needs the first rung, not an agent.
+
+## 1.3 Stage 1: Collecting the data
+
+Everything the system says about the world comes from the data it collects, so collection is the first design decision. **Retrieval via live API calls** means fetching facts at the moment they are needed from a service that holds them, instead of relying on what the model learned in training. The model then *writes* the answer but does not *know* it.
+
+Three questions shape this stage:
+
+- **What must the system know that the model does not?** List it. Anything not on the list, the system cannot answer honestly.
+- **How fresh must it be?** Freshness decides whether you fetch for every question, on a schedule, or once.
+- **How much can you trust it?** Know where each fact came from and when, so the system can say it. Even live data has a date, and that date should travel all the way to the answer.
+
+Module 2 builds this stage; Module 3 makes it run on its own.
+
+## 1.4 Stage 2: Connecting the data to the model
+
+Collecting data is not enough; the model only sees what is in its prompt. The connection stage decides **which** data goes to the model for a given request, **how** it is presented, and how the model’s reply comes back into the system.
+
+**Putting data in the prompt (grounding).** The simplest connection is to paste the data into the prompt and tell the model to use only that. This is called **grounding**: the answer is anchored to evidence in the prompt rather than to the model’s memory. It works well when the data is small and all of it is relevant, like a four-bank report.
+
+**Retrieval for larger collections.** When the data is too large to paste (a year of news, a policy library), the system must select. **Retrieval-augmented generation (RAG)** finds the passages most similar in meaning to the question and sends only those, numbered, so the answer can cite them. The question, not our code, now decides which data the model sees. Module 5 builds it.
+
+**Structured output: the model talking back to code.** A reply in sentences is right for a person, but code cannot reliably read sentences. **Structured output** asks the model to fill a fixed shape (for example: ticker, direction, a one-sentence reason) and checks that it did. The model’s language ability is kept, and its reply becomes data that the rest of the system can sort, store, compare against a threshold or show on a dashboard. Structured output is what lets a model sit *inside* a system instead of at the end of it. Module 4 builds it.
+
+**Long-term memory.** The model is stateless, so memory is always the system sending information again. Within a conversation it resends the earlier messages (**short-term memory**); across conversations it stores facts in a database and retrieves the relevant ones into the prompt (**long-term memory**), such as “this user covers the banking sector”. Long-term memory is simply another data source, under the same rules as any data: what may be stored, for how long, who can see it, and how it is corrected or deleted.
+
+**Skills.** A **skill** is a reusable package of instructions, and sometimes reference files or scripts, for a task that repeats: “write the weekly sector note in our house style”, “check a client note for advice language”. A good skill has a trigger (when to use it), steps and rules, the reference material it needs, and a check. It is written once, tested and reused, like a function.
+
+This stage is where most of the quality of an answer is won or lost: the best model produces a poor answer from the wrong data.
+
+## 1.5 Stage 3: Deciding the actions
+
+The third stage asks what the system may **do**, and who decides each step. Up to now, our code made every decision and the model only wrote. Stage 3 hands some of those decisions to the model, carefully.
+
+**Tool use and function calling.** The system describes **tools** to the model: a name, a description of when to use it, and its arguments. Instead of an answer, the model can reply with a request: *call* `get_daily_prices` *for BMRI, 7 days*. Our code checks the request, runs the function and sends the result back. Two consequences shape every design:
+
+- **The model requests; our code executes.** Permissions, limits, logging and approval all live in our code, at the moment a request arrives.
+- **The description is all the model knows about a tool.** Writing it is closer to writing a job description than to writing code.
+
+**Agents.** An **agent** is a model that uses tools in a loop: it plans a step, acts through a tool, observes the result, and decides again, until it can answer. Some questions need this: *“Which bank has the highest return on equity, and how did its shares trade last week?”* cannot be answered in one step, because the second step depends on the answer to the first. The agent decides the steps at run time, which is exactly what makes it powerful and harder to predict.
+
+**Chatbots, assistants and action-capable agents.** These words are used loosely; in this course they mean three different points on the ladder:
+
+|  | Chatbot | Assistant | Action-capable agent |
+|----|----|----|----|
+| What it does | Converses from what the model knows | Answers from your data, fetched for each request | Plans steps and uses tools, including actions that change something |
+| Where its facts come from | The model’s training | Retrieval chosen by our code or by the question | Tools the model chooses to call |
+| Who decides the steps | Nobody: one reply per message | Our code, in a fixed order | The model, step by step |
+| Main risk | Invented facts | Wrong or missing retrieval | Wrong actions, runaway cost, loops |
+| Main controls | Disclaimers | Grounding rules, citations | Approval, limited tools, step limits, logs |
+| In this course | – | Modules 4 and 5 | Day 2 |
+
+These are not grades of quality: an agent is worth its extra risk only when the steps cannot be known in advance.
+
+**Multi-agent coordination.** One agent with twenty tools and a page of instructions becomes slow, expensive and confused about which tool to use. Multi-agent designs split the work between specialists, each with a narrow job and a few tools:
+
+| Pattern | How it works | Banking example |
+|----|----|----|
+| **Supervisor** | A coordinating agent routes each request to a specialist and combines the answers | A desk assistant sends price questions to a market agent and product questions to a policy agent |
+| **Pipeline** | Agents run in a fixed order, each working on the previous one’s output | Collect the data → draft the client note → check the wording for advice |
+| **Reviewer** | One agent produces, another checks against rules | A writer drafts; a checker flags anything that reads like a recommendation |
+
+Every extra agent adds cost, delay and a way to fail: start with one agent and split only when it clearly struggles.
+
+**When does it run?** Actions also need a trigger: a person asking, a schedule, or a condition such as a large price move.
+
+## 1.6 Guardrails across all three stages: human-in-the-loop and data security
+
+Guardrails are not a fourth stage added at the end. They belong in every stage, and they are much cheaper to design in than to add later.
+
+**Human-in-the-loop (HITL)** means a person reviews and approves before the system does something that matters. The principle is simple: **reading is safe; acting needs approval**.
+
+| Kind of step | Risk | Control |
+|----|----|----|
+| Fetching a price, searching the news | Low | Runs automatically and is logged |
+| Saving a file, sending an email, posting to a channel | Medium to high | The system shows the proposed action; a person approves, edits or rejects it |
+| Anything involving money, customers or external parties | High | Not done by an AI system without the bank’s formal controls |
+
+Approval works only when the person sees exactly what will happen (the recipient, the text, the file name) and can change it.
+
+**Data security** for an AI project in a bank rests on a few habits:
+
+- **Keys are secrets.** API keys live in an environment file (`.env`), never in code, notebooks, prompts, logs or chat messages. Each person uses their own.
+- **Know what leaves the bank.** Everything in a prompt is sent to the model provider. In this course, prompts contain only public market data. Customer and internal data stay out unless the bank has approved the provider and the use.
+- **Least privilege.** Give the system only the data and tools it needs, and read-only tools unless an action is truly required.
+- **The model requests, the code decides.** Because every tool call passes through our code, it can be checked, limited, logged and, for actions, approved.
+- **Keep evidence.** Log what was asked, which data and tools were used and what was answered, without logging secrets.
+- **No advice.** The system describes; it never recommends buying, selling or holding. The rule goes in the prompt, and the output is checked for it.
+
+## 1.7 Thinking it through: Designing the IDX Market Assistant
+
+Apply the three stages to the system this course builds, an assistant that answers relationship managers’ questions about bank stocks.
+
+| Stage | Design question | Answer for the IDX Market Assistant |
+|----|----|----|
+| Collect | What must it know, how fresh, and what if a source fails? | Company and market data and news from Sectors, daily; carry on and say what is missing |
+| Connect | Which data per request, and how does the reply come back? | The whole small report for the digest; the most relevant articles for news questions; fields for code that raises alerts |
+| Act | What may it do, who decides the steps, and when? | Read freely, save or send after approval; our code for the digest, the model for open questions; on a schedule, on request, on a large move |
+| All | Guardrails | Keys in `.env`, public data only, no advice, approval for actions, a log of every run |
+
+The answers mix rungs of the ladder, as real systems do. When you design your own system on Day 3, start from the same table.
+
+<Info>
+**Questions to think about**
+
+- Pick one task from your own work. Which of its steps are exact rules (code), which need language or judgement (the model), and which change something (approval)?
+- For that task, what is the lowest rung of the control ladder that would work? What would you gain, and lose, by going one rung higher?
+- What data would the system need that should never leave the bank, and how would the design keep it out of the prompt?
+</Info>

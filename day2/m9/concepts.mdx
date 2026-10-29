@@ -1,0 +1,55 @@
+---
+title: "Module 9: Integration, the scheduler triggers the agent"
+description: "A schedule or a condition starts the agent, and nobody has to ask."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+*Module 9 goes beyond the syllabus: it joins the Day 1 automation layer and the Day 2 agent into one flow, the last rung of the control ladder.*
+
+On Day 1 the scheduler ran fixed code at fixed times. On Day 2 the agent decided what data to fetch, but only when a person asked. Module 9 puts them together: **a schedule or a condition starts the agent, and nobody has to ask**. This is the most autonomous system in the course, so the module is mostly about deciding what stays in code and what safeguards replace the person who is no longer there.
+
+## 9.1 Who decides what
+
+| Part | Decides | In the IDX Market Assistant |
+|----|----|----|
+| **Scheduler** | **When** to check | Weekdays after the market closes |
+| **Code** | **Whether** something happened | Did any bank move 5% or more in a day? |
+| **Agent** | **What** data explains it | Searches the saved news and checks how the price moved afterwards |
+| **Code** | **Where** the result goes | An alert file for the relationship-manager team |
+
+**Why is the condition code, not the agent?** “Did a bank move more than 5%?” has a definite answer. Code gives it for free, in milliseconds, the same way every time. The model is called only when there is something to explain, so the cost follows the events, not the clock. The general rule: **code decides whether to act; the model explains**.
+
+## 9.2 The integration flow
+
+<Frame caption="The integration flow: scheduler, coded condition, agent, alert">
+  <img src="/images/day2/integration-flow.png" alt="The integration flow: scheduler, coded condition, agent, alert" />
+</Frame>
+
+1.  At the scheduled time, the flow checks the recent prices of each bank.
+2.  If no bank moved 5% or more, the run ends: no model call, no cost.
+3.  A move that already has an alert is skipped, so nothing is explained twice.
+4.  For each new move, up to a fixed number per run, the agent explains it from the news and says how the stock traded afterwards. It uses **read tools only**, so no approval is needed.
+5.  Each explanation is saved as an alert, together with the numbers that triggered it.
+
+## 9.3 Safe triggers
+
+An automated agent has nobody watching each run, so the safeguards move into the design:
+
+| Safeguard | Why |
+|----|----|
+| **The condition is code** | Deterministic, free and testable; the model is not asked whether to act |
+| **Skip what is done** | A move already explained is not explained again |
+| **A limit per run** | A market-wide crash cannot set off hundreds of agent runs |
+| **Read tools only** | A triggered agent never acts; actions stay with people |
+| **Failure isolation** | If the agent fails, the alert still goes out, saying the explanation is missing |
+
+**The whole system in one flow.** The data layer (Module 2) feeds the scheduler (Module 3); the agent (Module 7) uses tools (Module 6) and the news search (Module 5), and could use MCP tools (Module 8) in the same way; underneath is the model call of Module 4. Days 3 and 4 put an interface in front of it and deploy it.
+
+<Info>
+**Questions to think about**
+
+- What event in your own work would be worth an automatic explanation? Which part of detecting it is a calculation, and which part needs the model?
+- What would happen to your flow on a day when everything moves at once, and which safeguard would stop it?
+- Which steps of your flow must never run without a person, even when it is triggered automatically?
+</Info>
