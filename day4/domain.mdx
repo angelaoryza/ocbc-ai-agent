@@ -1,0 +1,31 @@
+---
+title: "9. Optional, use a domain name"
+description: "Point a name such as assistant.example.com at the server, and tell nginx which name it serves."
+sidebarTitle: "9. Use a domain name"
+icon: "globe"
+---
+
+A domain is a name that points to the IP address of the server, such as `assistant.example.com`. It is easier to remember and share than a number. It also keeps every saved link working when the server moves, because you change one DNS record and not every link. One server can serve several apps, each under its own name.
+
+<Steps>
+  <Step title="Get a name">
+    Get a name from a registrar, or from whoever manages domains in your organization.
+  </Step>
+  <Step title="Add an A record">
+    In the DNS settings of the name, add an **A record** that points the name to `<server-ip>`. The change can take from a few minutes to a few hours to spread.
+  </Step>
+  <Step title="Set the name in nginx">
+    On the server, open the nginx file and replace `server_name _;` with `server_name assistant.example.com;`.
+
+    ```bash
+    nano /etc/nginx/sites-available/idx-assistant
+    nginx -t
+    systemctl reload nginx
+    ```
+
+    `nano` is a text editor in the terminal. Save with Ctrl+O and leave with Ctrl+X.
+  </Step>
+  <Step title="Open the name in a browser">
+    Open `http://assistant.example.com` in a browser. The chat page appears.
+  </Step>
+</Steps>

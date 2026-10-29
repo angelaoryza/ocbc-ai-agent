@@ -1,0 +1,58 @@
+---
+title: "Part 2: Hosting the web app"
+description: "What it takes to make the web app available to other people: what hosting is, what it needs, and a laptop compared with a VPS."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Part 2 explains what it takes to make the web app available to other people.
+
+## 2.1 From your device to other people's devices
+
+The web app works, and it is stuck on your laptop. The page opens at `http://localhost:5173`. The name localhost means this computer, so only your own browser can open that address. A colleague who types it opens their own computer, where nothing is running.
+
+- Other people cannot reach the app.
+- The app stops when the laptop sleeps or closes.
+- The keys and the data stay on a personal machine.
+
+To make the app available, it has to be hosted.
+
+## 2.2 What hosting is
+
+Hosting means running a program on a computer that other people can reach over a network. The computer that runs the program is called a **server**. The program is the same Python backend and the same page you built on Day 3. Only the place where they run changes.
+
+## 2.3 What hosting needs
+
+| Need | Meaning |
+|----|----|
+| Always on | The computer stays powered and awake, so the app answers at any hour. |
+| A network connection | The computer is connected to the network its users are on. |
+| A stable address | The address does not change, so users and links keep working. |
+| A running program | The backend runs, and it restarts after a crash or a reboot. |
+| A way in for users | A web server takes requests from browsers and passes them to the right program. |
+
+In short, hosting needs a device that is online all the time.
+
+## 2.4 Laptop or VPS
+
+There are two ways to get such a device. You can keep a laptop or PC running all the time, or you can use a VPS.
+
+A **VPS**, a virtual private server, is a computer in a data center that you control from another machine. It is a virtual machine inside a larger physical machine.
+
+A VPS has three traits.
+
+- It stays on.
+- It has a fixed address.
+- It has no screen or keyboard.
+
+You work on it through a command line.
+
+|  | Laptop or PC kept on | VPS |
+|----|----|----|
+| Always on | • Sleeps<br />• Restarts for updates<br />• Depends on the power at your desk | Stays on in a data center |
+| Address | Changes when the network changes | Fixed |
+| Reachable by others | Depends on the office router and firewall | Set up for network access |
+| How you work on it | With a screen and a keyboard | Through a remote command line, SSH |
+| Operating system | A desktop system | A server system without a desktop |
+
+The course deploys to your own VPS.

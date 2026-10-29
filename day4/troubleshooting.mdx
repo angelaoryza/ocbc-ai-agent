@@ -7,7 +7,7 @@ icon: "screwdriver-wrench"
 
 | Symptom | Cause and fix |
 |---|---|
-| `apt` or `pip` times out | The server has no route to the internet. Ask IT for the proxy address and set `HTTPS_PROXY`. |
+| `apt` or `pip` times out | The server has no route to the internet. Check the network settings of the VPS with your hosting provider. |
 | Browser cannot open `http://<server-ip>` | The firewall blocks port 80, or nginx is stopped. Run `ufw status` and `systemctl status nginx`. |
 | Page loads and shows 502 on a question | nginx cannot reach the backend. Run `systemctl status idx-assistant`. |
 | Page loads and shows 500 on a question | The backend failed. Read `journalctl -u idx-assistant -n 50 --no-pager`. A wrong key is the usual cause. |

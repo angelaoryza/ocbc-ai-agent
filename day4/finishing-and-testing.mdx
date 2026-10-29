@@ -1,0 +1,235 @@
+---
+title: "Part 1: Finishing and testing the system"
+description: "From a first working version to a system you can show: finishing by layer, testing, quality checks, logging and fixing."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Part 1 covers the work between a first working version and a system you can show. It applies to the system you build in the practical sessions, and the IDX Market Assistant is the worked example.
+
+## 1.1 Finishing the build
+
+A system is finished one layer at a time. Each layer is checked by itself before it is connected to the next. When a connected system fails, you already know the lower layers work, so the cause is in the newest one.
+
+| Layer | Done when | How to check it alone |
+|----|----|----|
+| Data | The tool returns the records you expect for a known input | Run the function in a notebook with an input you can verify |
+| Automation | The flow runs on its own, and one bad item does not stop it | Run it once by hand with one bad input |
+| Agent | The agent picks the right tool, and the answer matches the tool result | Ask three questions from a script and read `tools_used` |
+| Interface | The page shows these<br />• The answer<br />• The tools used<br />• An error message | Use the page and the `/docs` test page |
+| Connected system | A question typed in the page reaches the data and returns an answer | Ask an example question from the page |
+
+A finished system meets four conditions.
+
+- It answers the example questions correctly.
+- It shows a clear message for a bad input and does not crash.
+- The keys sit in `.env` and never in the code.
+- A short README tells another person how to run it.
+
+## 1.2 Testing against sample and unexpected input
+
+Testing sends inputs to the system and compares what comes back with what you expected. Two kinds of input matter.
+
+| Kind | What it is | Examples for the IDX Market Assistant | Expected result |
+|----|----|----|----|
+| Sample input | What the system was built for | "Which bank has the highest ROE?" and "How did NISP close?" | A correct answer from the right tool |
+| Unexpected input | What a real user sends anyway | • An empty message<br />• A very long text<br />• A question in another language<br />• A question outside banking<br />• A ticker that does not exist | • A short clear message<br />• No crash<br />• No invented number |
+| Unexpected conditions | What goes wrong around the system | A wrong key in `.env`, or Sectors not reachable | A short error message, and the cause in the log |
+
+Record every test on a **test sheet**. Write the expected result before you run the input, so you do not shape the expectation around what you see.
+
+| # | Input | Expected | Result | Fix needed |
+|----|----|----|----|----|
+| 1 | "Which bank has the highest ROE?" | Names a bank, uses `get_top_banks` | Pass | None |
+| 2 | An empty message | The message "Please type a question." | Pass | None |
+| 3 | "What is the weather in Jakarta?" | Says it only answers IDX bank questions | Fail, answers from memory | Add a rule to the system prompt |
+| 4 | "How did ABCD close?" (no such ticker) | Says there is no data | Fail, error 500 | Catch the error inside the tool |
+
+After each fix, run the whole sheet again. A fix for row 3 must not break row 1. The sheet grows with every problem you find, and it becomes the check you repeat before every change goes live.
+
+## 1.3 Quality checking
+
+Testing asks whether the system runs. Quality checking asks whether the answer is right. A model can write a confident wrong number, so a clean run proves little. Five checks catch most problems.
+
+| Check | How to do it | What a failure looks like |
+|----|----|----|
+| Numbers match the source | Compare each number in the answer with the tool result of the same run | A number in the answer that appears in no tool result |
+| The right tool was used | Read the tools line under the answer, or `tools_used` in the response | A ranking question answered without the ranking tool |
+| Missing data is stated | Ask about a company or period with no data | A guess in place of "no data" |
+| The same question gives the same facts | Ask one question three times and compare the numbers | Numbers that change between runs |
+| Source and date are clear | Check that the answer says where the data comes from and for which date | A number with no date |
+
+Run these checks on about ten questions that real users will ask, and add the failures to the test sheet. The page shows the tools used under each answer, so a reviewer can do the first two checks without opening any code. [Section 7.3 of the Day 2 coursebook](/day2/m7/concepts) explains why every number must come from a tool result.
+
+## 1.4 Adding basic logging
+
+**Instrumenting** a system means adding code that records what the system does. Without it, a report such as "it was slow yesterday" cannot be checked. The starter already has this code in `backend/main.py`. Block 1 creates the log file and Block 2 writes one line per request.
+
+This is Block 1 in simplified form. It creates a logger and sends its messages to a file.
+
+```python
+log = logging.getLogger("assistant")
+log.setLevel(logging.INFO)
+handler = RotatingFileHandler(LOG_DIR / "app.log", maxBytes=1_000_000, backupCount=3)
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+log.addHandler(handler)
+```
+
+| Line | What it does |
+|----|----|
+| `logging.getLogger("assistant")` | Creates a logger called `assistant`. Every log line in the backend goes through it. |
+| `log.setLevel(logging.INFO)` | Keeps messages of level INFO and above. |
+| `RotatingFileHandler(...)` | Writes to `logs/app.log`. When the file reaches 1 MB, it starts a new file and keeps three old ones, so the log never fills the disk. |
+| `Formatter("%(asctime)s ...")` | Puts these on every line<br />• The time<br />• The level<br />• The message |
+
+The real file adds a second handler that prints the same lines to the terminal.
+
+| Level | Use it for | Example in the starter |
+|----|----|----|
+| INFO | A normal event | A request finished, or a question used these tools |
+| ERROR | Something failed | The agent raised an error |
+
+Block 2 holds a **middleware**, a function that FastAPI runs around every request. The middleware does four things.
+
+1. Reads the clock.
+2. Passes the request on.
+3. Reads the clock again.
+4. Writes one line.
+
+```python
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    log.info("%s %s -> %s in %.0f ms", request.method, request.url.path, response.status_code, ms)
+    return response
+```
+
+The chat route adds two more log calls. One records the tools used for each question. The other records a failure with its full details and gives the page a short message.
+
+```python
+try:
+    result = ask_agent(request.message, request.thread_id)
+except Exception:
+    log.exception("agent failed for thread %s", request.thread_id)
+    raise HTTPException(status_code=500, detail="The assistant hit an error. Please try again.")
+log.info("chat thread=%s tools=%s", request.thread_id, result["tools_used"])
+```
+
+Together, these lines produce the three measurements the slides call usage, response latency, and errors.
+
+| Measurement | Which code writes it | Where it shows in the log |
+|----|----|----|
+| Usage | The middleware writes one line per request, and the route writes the chat line | Each `POST /api/chat` line is one question. The `tools=` value names the tools it used |
+| Response latency | The middleware, from the two clock readings | The number before `ms` |
+| Errors | `log.exception` in the route, and the status code in the middleware line | A 500 status, and an ERROR line followed by the error details |
+
+To add logging to your own system, follow these steps.
+
+1. Copy Block 1 of `main.py` into your backend. Change the logger name and the file name.
+2. If your backend uses FastAPI, copy the middleware from Block 2. It needs no change.
+3. Write one INFO line at the end of each important step, with the facts you will want later.
+4. Write failures with `log.exception` inside the `except` block, so the log keeps the error details.
+5. Keep keys and personal data out of the log lines. Anyone who can read the log can read them.
+
+Good facts for an INFO line.
+
+- The thread id
+- The tools used
+- The number of records
+
+A script with no web backend, such as a scheduled agent, needs only a short setup. Python's `logging.basicConfig` sends every message to a file.
+
+```python
+import logging
+
+logging.basicConfig(
+    filename="agent_run.log",
+    encoding="utf-8",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logging.info("run started")
+```
+
+## 1.5 Reading the logs for failed and slow requests
+
+The log is only useful when someone reads it. This sample holds four requests.
+
+- A normal request
+- A bad request
+- A failure
+- A slow request
+
+```text
+2026-10-29 09:14:02,309 INFO chat thread=ab12 tools=['get_top_banks']
+2026-10-29 09:14:02,311 INFO POST /api/chat -> 200 in 4300 ms
+2026-10-29 09:15:40,120 INFO POST /api/chat -> 400 in 2 ms
+2026-10-29 09:16:11,904 ERROR agent failed for thread cd34
+Traceback (most recent call last):
+...
+2026-10-29 09:16:11,910 INFO POST /api/chat -> 500 in 1810 ms
+2026-10-29 09:18:30,548 INFO chat thread=ef56 tools=['get_top_banks', 'get_company_overview', 'get_valuation']
+2026-10-29 09:18:30,550 INFO POST /api/chat -> 200 in 31200 ms
+```
+
+| What you see | What it means | Where to look next |
+|----|----|----|
+| `-> 400` | The request was empty or wrong | The page or whatever called the backend |
+| `-> 500` with an ERROR line | The agent or a tool failed | The error details under the ERROR line, such as a wrong key or a Sectors error |
+| `-> 200` with a large `ms` value | The answer was correct and slow | The `tools=` line above it. More tools mean more steps and more waiting |
+| `-> 404` on `/favicon.ico` | The browser asked for a site icon | Nothing. It is harmless |
+| The page shows 502 and the log has no new line | The request never reached the backend | The backend is not running. Check `systemctl status idx-assistant` on the server |
+
+Searching beats scrolling once the log grows. These commands work on the server. In PowerShell on a laptop, `Select-String` does the same job as `grep`.
+
+| To find | Server command | Laptop command |
+|----|----|----|
+| Failed requests | `grep " -> 500 " logs/app.log` | `Select-String " -> 500 " logs\app.log` |
+| Error details | `grep -A 5 ERROR logs/app.log` | `Select-String "ERROR" logs\app.log -Context 0,5` |
+| Slow requests, 10 seconds or more | `grep -E "in [0-9]{5,} ms" logs/app.log` | `Select-String "in \d{5,} ms" logs\app.log` |
+| Number of questions | `grep -c "POST /api/chat" logs/app.log` | `(Select-String "POST /api/chat" logs\app.log).Count` |
+| Tools used per question | `grep "chat thread" logs/app.log` | `Select-String "chat thread" logs\app.log` |
+
+The commands are shortened phrases, and so are their flags.
+
+| Command or flag | Long form | What it does |
+|----|----|----|
+| `grep` | Global regular expression print | Prints the lines that match a pattern |
+| `grep -c` | Count | Prints the number of matching lines and not the lines |
+| `grep -A 5` | After | Prints 5 lines after each match, which shows the error details |
+| `grep -E` | Extended expression | Allows patterns such as `[0-9]{5,}`, five or more digits |
+| `tail -n 20` | Tail, number of lines | The tail is the end of a file. It prints the last 20 lines |
+| `tail -f` | Follow | Keeps the file open and prints new lines as they arrive |
+| `journalctl -u idx-assistant` | Journal control, unit | Reads the systemd journal for one service, called a unit |
+| `Select-String` | Select string | The PowerShell version of `grep`. PowerShell commands read as a verb and a noun |
+
+Decide what slow means before you test. The starter answers a simple question in a few seconds, and a question that needs three tools takes longer. A limit of 10 seconds is a reasonable first choice, and you can change it after you see your own numbers.
+
+**Monitoring** means reading the log on a regular schedule. A short check every day answers three questions.
+
+- How many questions came in?
+- Did any request fail?
+- Which request was slowest?
+
+## 1.6 Fixing what you find
+
+Every finding follows the same loop.
+
+1. Repeat the input that failed, so you can see the problem yourself.
+2. Find the layer that caused it. The status code and the log say where to look.
+3. Change one thing in that layer.
+4. Run the whole test sheet again.
+5. Write the fix next to the row on the sheet.
+
+Fix the layer that caused the problem, not the layer where it shows. A wrong number on the page is often a data or prompt problem and never a page problem.
+
+| Symptom | Layer | Typical fix |
+|----|----|----|
+| A wrong number in the answer | Data or agent | Compare with the tool result. If the tool is right, add a rule to the system prompt that every number comes from a tool |
+| The wrong tool was chosen | Agent | Sharpen the tool description, as in [section 6.4 of the Day 2 coursebook](/day2/m6/concepts) |
+| A question outside banking is answered from memory | Agent | Add a rule to the system prompt that says what the assistant answers and what it declines |
+| An error 500 for a ticker that does not exist | Data | Catch the error inside the tool and return a "no data" message |
+| Very slow answers | Agent or data | • Reduce the number of tools<br />• Tighten their descriptions<br />• Check which tool is slow |
+| The page shows nothing after an error | Interface | Open the browser console with F12 and read the message |

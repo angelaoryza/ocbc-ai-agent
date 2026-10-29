@@ -1,58 +1,71 @@
 ---
 title: "Day 4 overview"
-description: "This guide moves the app from your laptop to a server, following the five items of Module 10."
+description: "Finishing, testing, deploying and peer sharing: the system is tested and put on a server for others to use."
 sidebarTitle: "Overview"
 icon: "map"
 ---
 
-This guide moves the app from your laptop to a server. The sections follow the five items of Module 10.
+## Background
 
-## What the guide assumes
+On Day 3, the agent got a web page. The page and the backend run on your laptop, so only you can open them, and they stop when the laptop sleeps. Day 4 takes the system from a first working version to a system that others use.
 
-- The server runs Ubuntu 22.04 or newer, or Debian 12 or newer, and installs software with `apt`.
-- You log in with `ssh root@<server-ip>` and a password.
-- The server reaches the internet for `apt` and `pip`.
-- The app is built and working on your laptop, with a `.env` file in the course folder.
+Day 4 has four parts and a conclusion.
 
-Replace `<server-ip>` in every command with the address of your server, and `<course-folder>` with the path of the course folder on your laptop.
+1. **[Part 1, Finishing and Testing the System](/day4/finishing-and-testing).** Getting the system ready to show.
+2. **[Part 2, Hosting the Web App](/day4/hosting).** What hosting is and what it needs.
+3. **[Part 3, Running the System on the Server](/day4/running-on-the-server).** Putting the system on a server and confirming that it works there.
+4. **[Part 4, Sharing the System](/day4/sharing).** Presenting the prototype to peers and choosing next steps.
+5. **[Conclusion](/day4/conclusion).** A recap of the four days.
 
-## What runs where
+<Frame caption="The IDX Market Assistant on a VPS">
+  <img src="/images/day4/assistant-on-a-vps.png" alt="The IDX Market Assistant on a VPS" />
+</Frame>
 
-| Piece | On your laptop | On the server |
-|---|---|---|
-| Page | Vite dev server on port 5173 | Built files in `/opt/idx-assistant/dist`, served by nginx on port 80 |
-| Backend | uvicorn, started by hand on port 8000 | uvicorn, run by systemd on port 8000 |
-| Forwarding `/api` | Vite proxy | nginx |
-| Keys | `.env` in the course folder | `.env` in `/opt/idx-assistant` |
-| Logs | The terminal and `logs/app.log` | `journalctl` and `/opt/idx-assistant/logs/app.log` |
+**Day 4 in one line, the system is tested and put on a server for others to use.**
 
-The folder on the server looks like this.
+## Training objectives
 
-```text
-/opt/idx-assistant/
-    backend/                 main.py, agent.py
-    dist/                    the built page
-    logs/                    app.log, written by the backend
-    .venv/                   Python packages
-    .env                     the keys
-    requirements-server.txt  package list
-```
+By the end of Day 4, participants are able to:
 
-## The steps
+- Finish a system one layer at a time and check each layer before connecting it to the next
+- Test a system against sample and unexpected input, and record the results on a test sheet
+- Check an answer against the tool results it came from
+- Explain how the backend writes a log line
+- Add logging for usage, response latency, and errors
+- Read a log line, and find failed and slow requests
+- Fix an issue one layer and one change at a time
+- Explain what hosting is and what a hosted app needs
+- Compare running an app on a laptop with running it on a VPS
+- Connect to a server with SSH and copy files to it
+- Explain how a browser request travels through nginx and the backend to the agent
+- Explain what a domain is and why it is worth having
+- Explain what a managed process is and why the backend needs one
+- Keep the keys in an environment file on the server
+- Confirm that the deployed system writes its logs on the server
+- Present the use case and the prototype to peers, and name the next steps
 
-1. [SSH access to the VPS](/day4/ssh-access)
-2. [Build and copy the project](/day4/build-and-copy)
-3. [Environment configuration](/day4/environment)
-4. [Run the backend as a managed process](/day4/managed-process)
-5. [Reverse proxy with nginx](/day4/reverse-proxy)
-6. [Confirm the logs](/day4/logs)
-7. [Update after a change](/day4/update)
-8. [Troubleshooting](/day4/troubleshooting)
+## Course data and tools
 
-## Files in `day4/deploy/`
+**Data.** The same as Days 1 to 3. The deployed backend reaches Sectors and Gemini with the keys in the server's `.env` file.
 
-| File | Where it goes on the server |
-|---|---|
-| `deploy/idx-assistant.service` | `/etc/systemd/system/idx-assistant.service` |
-| `deploy/nginx-idx-assistant.conf` | `/etc/nginx/sites-available/idx-assistant` |
-| `deploy/requirements-server.txt` | `/opt/idx-assistant/requirements-server.txt` |
+**Tools and files.**
+
+| Area | Tool |
+|----|----|
+| Testing | • A test sheet<br />• The FastAPI test page at `/docs`<br />• The page itself |
+| Logging | The Python `logging` module with `RotatingFileHandler`, and a FastAPI middleware |
+| Reading logs on the server | • `tail`<br />• `grep`<br />• `journalctl` |
+| Reading logs on a laptop | `Select-String` in PowerShell |
+| Server access | `ssh` and `scp` |
+| Process manager | systemd |
+| Web server and reverse proxy | nginx |
+| Backend | uvicorn |
+
+| Folder or file | Holds |
+|----|----|
+| `day3/starter/backend/main.py` | The logging code, in Blocks 1 and 2 |
+| `day3/starter/logs/app.log` | The log the backend writes on your laptop |
+| `day4/DEPLOYMENT.md` | The commands for every deployment step |
+| `day4/deploy/idx-assistant.service` | The systemd service file |
+| `day4/deploy/nginx-idx-assistant.conf` | The nginx configuration |
+| `day4/deploy/requirements-server.txt` | The Python packages for the server |

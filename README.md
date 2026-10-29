@@ -8,9 +8,9 @@ The Mintlify site for participants of the OCBC AI Creator Masterclass, a build s
 |---|---|
 | `index.mdx`, `getting-started/` | Home, setup, pre-course checklist, course data, folder map |
 | `day1/`, `day2/` | Day overview, then one folder per module: `concepts`, `notebook`, `example`, `exercise` |
-| `day3/` | The React and FastAPI starter: overview, read the code, set up and run, change it with Copilot |
-| `day4/` | Deployment to a VPS: overview, then one page per section of the deployment guide |
-| `images/day1/`, `images/day2/` | Figures from the coursebooks |
+| `day3/` | Overview, concepts and glossary from the coursebook, then the React and FastAPI starter: starter overview, read the code, set up and run, change it with Copilot |
+| `day4/` | Overview and glossary, one concepts page per part of the coursebook, a conclusion, and the deployment guide with one page per section |
+| `images/day1/` to `images/day4/` | Figures from the coursebooks |
 | `docs.json` | Site settings and navigation |
 | `style.css` | Algoritma brand styling that `docs.json` cannot express |
 | `AGENTS.md` | Writing rules and the content boundary |
