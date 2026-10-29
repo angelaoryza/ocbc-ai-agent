@@ -1,0 +1,35 @@
+---
+title: "1. SSH access to the VPS"
+description: "SSH is the encrypted connection that carries your commands and your file copies."
+sidebarTitle: "1. SSH access"
+icon: "key"
+---
+
+SSH is the encrypted connection that carries your commands and your file copies.
+
+<Warning>
+You log in as `root`, the server's administrator. Every command you type on the server runs with full rights.
+</Warning>
+
+<Steps>
+  <Step title="Log in">
+    Open PowerShell on your laptop and log in.
+
+    ```powershell
+    ssh root@<server-ip>
+    ```
+
+    Type the password when asked. The prompt changes to the server's name.
+  </Step>
+  <Step title="Check the system and the Python version">
+    ```bash
+    cat /etc/os-release
+    python3 --version
+    ```
+
+    Python must be 3.10 or newer.
+  </Step>
+  <Step title="Log out">
+    Type `exit` to return to your laptop.
+  </Step>
+</Steps>

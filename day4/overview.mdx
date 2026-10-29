@@ -1,0 +1,58 @@
+---
+title: "Day 4 overview"
+description: "This guide moves the app from your laptop to a server, following the five items of Module 10."
+sidebarTitle: "Overview"
+icon: "map"
+---
+
+This guide moves the app from your laptop to a server. The sections follow the five items of Module 10.
+
+## What the guide assumes
+
+- The server runs Ubuntu 22.04 or newer, or Debian 12 or newer, and installs software with `apt`.
+- You log in with `ssh root@<server-ip>` and a password.
+- The server reaches the internet for `apt` and `pip`.
+- The app is built and working on your laptop, with a `.env` file in the course folder.
+
+Replace `<server-ip>` in every command with the address of your server, and `<course-folder>` with the path of the course folder on your laptop.
+
+## What runs where
+
+| Piece | On your laptop | On the server |
+|---|---|---|
+| Page | Vite dev server on port 5173 | Built files in `/opt/idx-assistant/dist`, served by nginx on port 80 |
+| Backend | uvicorn, started by hand on port 8000 | uvicorn, run by systemd on port 8000 |
+| Forwarding `/api` | Vite proxy | nginx |
+| Keys | `.env` in the course folder | `.env` in `/opt/idx-assistant` |
+| Logs | The terminal and `logs/app.log` | `journalctl` and `/opt/idx-assistant/logs/app.log` |
+
+The folder on the server looks like this.
+
+```text
+/opt/idx-assistant/
+    backend/                 main.py, agent.py
+    dist/                    the built page
+    logs/                    app.log, written by the backend
+    .venv/                   Python packages
+    .env                     the keys
+    requirements-server.txt  package list
+```
+
+## The steps
+
+1. [SSH access to the VPS](/day4/ssh-access)
+2. [Build and copy the project](/day4/build-and-copy)
+3. [Environment configuration](/day4/environment)
+4. [Run the backend as a managed process](/day4/managed-process)
+5. [Reverse proxy with nginx](/day4/reverse-proxy)
+6. [Confirm the logs](/day4/logs)
+7. [Update after a change](/day4/update)
+8. [Troubleshooting](/day4/troubleshooting)
+
+## Files in `day4/deploy/`
+
+| File | Where it goes on the server |
+|---|---|
+| `deploy/idx-assistant.service` | `/etc/systemd/system/idx-assistant.service` |
+| `deploy/nginx-idx-assistant.conf` | `/etc/nginx/sites-available/idx-assistant` |
+| `deploy/requirements-server.txt` | `/opt/idx-assistant/requirements-server.txt` |

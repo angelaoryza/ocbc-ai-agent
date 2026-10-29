@@ -1,0 +1,27 @@
+---
+title: "6. Confirm the logs"
+description: "The backend writes two logs on the server: logs/app.log and the systemd journal."
+sidebarTitle: "6. Confirm the logs"
+icon: "file-lines"
+---
+
+The backend writes two logs on the server.
+
+```bash
+tail -n 20 /opt/idx-assistant/logs/app.log
+journalctl -u idx-assistant -n 30 --no-pager
+```
+
+Ask a question in the page, then read the log again. A new line appears for each request.
+
+```text
+2026-10-29 09:14:02,311 INFO POST /api/chat -> 200 in 4300 ms
+```
+
+| Part of the line | Meaning |
+|---|---|
+| `POST /api/chat` | The request the page sent. |
+| `200` | The status code. 200 means it worked and 500 means the backend failed. |
+| `4300 ms` | How long the request took. |
+
+`journalctl` also holds the start and stop messages of the service. Follow either log live with `tail -f` or `journalctl -f`.

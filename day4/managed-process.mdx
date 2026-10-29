@@ -1,0 +1,68 @@
+---
+title: "4. Run the backend as a managed process"
+description: "A managed process is a program that the server starts, watches, and restarts."
+sidebarTitle: "4. Managed process"
+icon: "rotate"
+---
+
+A managed process is a program that the server starts, watches, and restarts. On your laptop, the backend stops when you close its window. On the server, systemd keeps it running.
+
+<Steps>
+  <Step title="Copy the service file from your laptop">
+    ```powershell
+    cd <course-folder>
+    scp day4\deploy\idx-assistant.service root@<server-ip>:/etc/systemd/system/
+    ```
+
+    <Warning>
+    This writes into `/etc/systemd/system/` as root. Copy only the course's service file there.
+    </Warning>
+  </Step>
+  <Step title="Start it on the server">
+    ```bash
+    systemctl daemon-reload
+    systemctl enable --now idx-assistant
+    systemctl status idx-assistant
+    ```
+
+    The status shows `active (running)`. Press `q` to leave the status screen.
+  </Step>
+  <Step title="Test the restart">
+    Stop the backend process, wait a few seconds, and check again.
+
+    ```bash
+    pkill -f "uvicorn backend.main"
+    sleep 4
+    systemctl status idx-assistant
+    ```
+
+    The status shows `active (running)` with a new process id.
+  </Step>
+</Steps>
+
+## The service file
+
+```ini day4/deploy/idx-assistant.service
+[Unit]
+Description=IDX Market Assistant backend
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/idx-assistant
+ExecStart=/opt/idx-assistant/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+| Line in `idx-assistant.service` | What it does |
+|---|---|
+| `User=www-data` | Runs the backend as a user with no login. |
+| `WorkingDirectory=/opt/idx-assistant` | Starts in the project folder, so `backend.main` and `.env` are found. |
+| `ExecStart=...` | The same uvicorn command you ran on your laptop, with the full path to the Python in `.venv`. |
+| `Restart=always` and `RestartSec=3` | Starts the backend again 3 seconds after any crash. |
+| `WantedBy=multi-user.target` | Starts the backend when the server boots. |

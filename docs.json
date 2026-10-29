@@ -149,6 +149,51 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Day 3",
+        "groups": [
+          {
+            "group": "Day 3",
+            "pages": [
+              "day3/overview",
+              "day3/read-the-code",
+              "day3/setup-and-run",
+              "day3/copilot"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Day 4",
+        "groups": [
+          {
+            "group": "Day 4",
+            "pages": [
+              "day4/overview"
+            ]
+          },
+          {
+            "group": "Module 10: Deployment",
+            "icon": "server",
+            "pages": [
+              "day4/ssh-access",
+              "day4/build-and-copy",
+              "day4/environment",
+              "day4/managed-process",
+              "day4/reverse-proxy"
+            ]
+          },
+          {
+            "group": "After deployment",
+            "icon": "clipboard-check",
+            "pages": [
+              "day4/logs",
+              "day4/update",
+              "day4/troubleshooting"
+            ]
+          }
+        ]
       }
     ]
   },

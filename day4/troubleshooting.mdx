@@ -1,0 +1,17 @@
+---
+title: "8. Troubleshooting"
+description: "Common symptoms after deployment, their cause and the fix."
+sidebarTitle: "8. Troubleshooting"
+icon: "screwdriver-wrench"
+---
+
+| Symptom | Cause and fix |
+|---|---|
+| `apt` or `pip` times out | The server has no route to the internet. Ask IT for the proxy address and set `HTTPS_PROXY`. |
+| Browser cannot open `http://<server-ip>` | The firewall blocks port 80, or nginx is stopped. Run `ufw status` and `systemctl status nginx`. |
+| Page loads and shows 502 on a question | nginx cannot reach the backend. Run `systemctl status idx-assistant`. |
+| Page loads and shows 500 on a question | The backend failed. Read `journalctl -u idx-assistant -n 50 --no-pager`. A wrong key is the usual cause. |
+| Service shows `failed` with `Permission denied` | The files belong to root. Run `chown -R www-data:www-data /opt/idx-assistant`. |
+| `nginx -t` reports a syntax error | The file has the wrong line endings or a typo. Check that it was saved with LF endings. |
+| `.service` file is rejected | The file has CRLF line endings. VS Code shows LF or CRLF in the bottom right bar, and clicking it switches. |
+| The page shows the old version | The browser cached it. Press **Ctrl+F5**. |
