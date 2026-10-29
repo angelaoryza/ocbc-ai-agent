@@ -1,0 +1,57 @@
+---
+title: "2. Build and copy the project"
+description: "Build the page on your laptop, then copy the backend, the built page and the keys to the server."
+sidebarTitle: "2. Build and copy"
+icon: "box"
+---
+
+Run these on your laptop in PowerShell.
+
+<Steps>
+  <Step title="Build the page">
+    This writes `dist/`, which holds plain HTML, JavaScript, and CSS. The server needs no Node.
+
+    ```powershell
+    cd <course-folder>\day3\starter\frontend
+    npm run build
+    ```
+  </Step>
+  <Step title="Create the folder on the server">
+    ```powershell
+    ssh root@<server-ip> "mkdir -p /opt/idx-assistant"
+    ```
+  </Step>
+  <Step title="Copy the files">
+    Each `scp` command asks for the password.
+
+    ```powershell
+    cd <course-folder>
+    scp -r day3\starter\backend root@<server-ip>:/opt/idx-assistant/
+    scp -r day3\starter\frontend\dist root@<server-ip>:/opt/idx-assistant/
+    scp day4\deploy\requirements-server.txt root@<server-ip>:/opt/idx-assistant/
+    scp .env root@<server-ip>:/opt/idx-assistant/.env
+    ```
+  </Step>
+</Steps>
+
+`node_modules` stays on your laptop because the server never runs Node.
+
+<Warning>
+The last command copies your keys. The `.env` file travels over the encrypted connection and never goes into git.
+</Warning>
+
+## `requirements-server.txt`
+
+```text day4/deploy/requirements-server.txt
+# Packages the backend needs on the server. Versions match the course's requirements.txt.
+requests==2.34.2
+python-dotenv==1.2.4
+pydantic==2.14.1
+langchain==1.4.7
+langchain-core==1.7.0
+langchain-google-genai==4.4.2
+langgraph==1.2.17
+langgraph-checkpoint==4.3.0
+fastapi==0.162.0
+uvicorn==0.54.0
+```

@@ -4,7 +4,8 @@
 
 - The participant site for the **OCBC AI Creator Masterclass**, a 4-day build sprint by Algoritma for PT Bank OCBC NISP Tbk. Participants build the **IDX Market Assistant** on Indonesian stock data from Sectors.
 - Built on [Mintlify](https://mintlify.com). Pages are MDX files with YAML frontmatter; configuration lives in `docs.json`; brand styling that `docs.json` cannot express lives in `style.css`.
-- Content comes from the course materials repo (`agentic-ai-ocbc`): the coursebooks become **Concepts** pages, the notebooks **Notebook walkthrough** pages, `examples/` **Worked example** pages and `exercises/` **Exercise** pages.
+- Content comes from the course materials repo (`agentic-ai-ocbc`): the coursebooks become **Concepts** pages, the notebooks **Notebook walkthrough** pages, `examples/` **Worked example** pages and `exercises/` **Exercise** pages. Day 3 pages come from `day3/starter/README.md` and the starter code; Day 4 pages from `day4/DEPLOYMENT.md` and `day4/deploy/`, one page per section of the guide.
+- Keep `<server-ip>` and `<course-folder>` placeholders as they are. Never publish a real server address or a personal path.
 - Use the Mintlify docs MCP server, `https://www.mintlify.com/docs/mcp`, to check component syntax and `docs.json` fields.
 
 ## Terminology

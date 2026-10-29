@@ -1,0 +1,143 @@
+---
+title: "Read the code"
+description: "Every code file starts with a comment that says what the file does; the two files you read most are split into numbered blocks."
+icon: "code"
+---
+
+Every code file starts with a comment that says what the file does. The two files you read most are split into numbered blocks, like notebook cells.
+
+| File | Blocks |
+|---|---|
+| `frontend/src/App.jsx` | Settings, State, Functions, Layout |
+| `backend/agent.py` | Setup, Tools, The agent, ask_agent |
+| `backend/main.py` | Logging, The app, The routes, Registration |
+
+In `App.jsx`, the rule that ties the blocks together is that changing a state variable makes React redraw the layout. Start there, change the `TITLE` near the top, save, and watch the page update.
+
+## `frontend/src/App.jsx`
+
+The top of the file explains its blocks and what one question does:
+
+```jsx day3/starter/frontend/src/App.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+// App.jsx is the whole chat page. It is the one file you edit, or ask Copilot to edit.
+//
+// How to read this file. It has four blocks, like four notebook cells.
+//   Block 1  Settings    the title and example questions, plain variables
+//   Block 2  State       the variables the page watches, when one changes the page redraws
+//   Block 3  Functions   what happens when the user sends a question
+//   Block 4  Layout      the HTML-looking code after "return", which shows the state
+//
+// The rule that ties the blocks together. Change a state variable and React redraws the layout.
+//
+// What one question does.
+//   1. The user clicks send, and send() adds their message to the "messages" state.
+//   2. send() posts the question to /api/chat, which is the Python backend.
+//   3. The backend returns { reply, tools_used }.
+//   4. send() adds the reply to "messages", and React redraws the chat.
+//
+// Copilot handles these parts, so skim past them. useEffect, useRef, .map(), key, async and await.
+//
+// Example prompt for Copilot. "In App.jsx, add a button that clears the conversation."
+// ─────────────────────────────────────────────────────────────────────────────
+```
+
+Block 1 holds the settings you change first:
+
+```jsx day3/starter/frontend/src/App.jsx (Block 1)
+// ── Block 1, Settings ─────────────────────────────────────────────────────────
+// EDIT HERE, the title, the subtitle, and the example questions for YOUR system.
+// "const" marks a variable that is not reassigned. These are plain text and a list.
+const TITLE = 'IDX Market Assistant'
+const SUBTITLE = 'Ask about Indonesian banks: prices, rankings, movers and valuation.'
+const EXAMPLES = [
+  'Which bank has the highest return on equity?',
+  'Which banks gained the most this week?',
+  'How did NISP close, and what is its valuation?',
+]
+```
+
+Block 2 holds the state. Each `useState` gives a value and a function that changes it:
+
+```jsx day3/starter/frontend/src/App.jsx (Block 2)
+  // ── Block 2, State ──────────────────────────────────────────────────────────
+  // useState(start) gives two things, the current value and a function that changes it.
+  // Never edit the value in place. Call the function, and React redraws the page.
+  const [messages, setMessages] = useState([])      // the chat bubbles, [{ role: 'user' | 'assistant', text, tools }]
+  const [input, setInput] = useState('')            // the text in the box
+  const [loading, setLoading] = useState(false)     // true while waiting for the backend
+  const [threadId] = useState(() => crypto.randomUUID()) // names this conversation, sent with every question
+  const bottomRef = useRef(null)                    // points at an empty div below the chat, used for scrolling
+```
+
+## `backend/agent.py`
+
+The agent layer: the same tools and agent you built on Day 2.
+
+```python day3/starter/backend/agent.py
+"""
+agent.py is the agent layer. It holds the same tools and agent you built on Day 2.
+
+How to read this file. It has four blocks, like four notebook cells.
+    Block 1  Setup       loads the keys from .env and sets the Sectors address
+    Block 2  Tools       Python functions the LLM can call, each docstring tells the LLM when to use the tool
+    Block 3  The agent   the system prompt, the LLM, and create_agent joining them
+    Block 4  ask_agent   the one function the web backend calls, it takes a question and returns the answer
+
+What changed from Day 2. The agent now sits behind a function that returns data and does not print.
+The backend in main.py sends that data to the page as JSON.
+
+EDIT HERE for your own system. Change the tools and the system prompt, and leave ask_agent as it is.
+"""
+```
+
+Block 3 is where the system prompt and the tool list live:
+
+```python day3/starter/backend/agent.py (Block 3)
+# ── Block 3, The agent (from Module 7) ─────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
+Use the tools to get data; never guess a number. Say the date of every price you quote.
+Never give buy, sell or hold advice. Keep answers short; use a small table when comparing banks."""
+
+llm = ChatGoogleGenerativeAI(
+    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
+agent = create_agent(
+    model=llm,
+    tools=[get_company_overview, get_top_banks, get_top_movers, get_valuation],
+    system_prompt=SYSTEM_PROMPT,
+    checkpointer=InMemorySaver(),  # remembers each thread_id's conversation (lost on restart)
+)
+```
+
+## `backend/main.py`
+
+The web backend that connects the React page to the agent. You rarely need to open it.
+
+```python day3/starter/backend/main.py
+"""
+main.py is the web backend. It connects the React page to the agent.
+
+How to read this file. It has four blocks.
+    Block 1  Logging       writes one line per request to the console and to logs/app.log
+    Block 2  The app       creates the FastAPI application and the logging middleware
+    Block 3  The routes    /api/health and /api/chat, the two addresses the page can call
+    Block 4  Registration  attaches the routes to the app
+
+What FastAPI does. It connects an address to a Python function.
+# POST sends data to the server. The question travels in the body of the request.
+@api.post("/chat") means that when a POST arrives at /api/chat, FastAPI runs the function below it
+and sends back whatever it returns as JSON.
+
+uvicorn is the program that listens on port 8000 and hands each request to this app.
+Run it from the starter folder (day3/starter).
+    uvicorn backend.main:app --reload --port 8000
+
+The test page at http://127.0.0.1:8000/docs lists every route and lets you try each one without the React page.
+
+Every request is logged with its duration to logs/app.log. Day 4 (Modules 9 and 10) reads these logs.
+"""
+```

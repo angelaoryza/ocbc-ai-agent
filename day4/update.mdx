@@ -1,0 +1,16 @@
+---
+title: "7. Update after a change"
+description: "Which files to copy, and what to restart, after you change the page, the backend or the keys."
+sidebarTitle: "7. Update after a change"
+icon: "arrows-rotate"
+---
+
+| Change | Commands |
+|---|---|
+| Page (`App.jsx` or `App.css`) | Run `npm run build` on your laptop, then `scp -r day3\starter\frontend\dist root@<server-ip>:/opt/idx-assistant/`. Press **Ctrl+F5** in the browser. |
+| Backend (`agent.py` or `main.py`) | Run `scp -r day3\starter\backend root@<server-ip>:/opt/idx-assistant/`, then `systemctl restart idx-assistant` on the server. |
+| Keys (`.env`) | Run `scp .env root@<server-ip>:/opt/idx-assistant/.env`, then `systemctl restart idx-assistant` on the server. |
+
+<Warning>
+After copying files as root, run `chown -R www-data:www-data /opt/idx-assistant` on the server. Otherwise the service cannot read them.
+</Warning>

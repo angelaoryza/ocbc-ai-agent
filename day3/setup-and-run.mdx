@@ -1,0 +1,56 @@
+---
+title: "Set up and run"
+description: "Install the web packages once, then run the backend and the interface in two terminals."
+icon: "terminal"
+---
+
+## One-time setup
+
+Needs Node.js 20 or newer (`node --version`). In the course folder, with the `.venv` active:
+
+```bash
+pip install -r day3/starter/requirements-web.txt
+cd day3/starter/frontend
+npm install
+```
+
+The `.env` from Day 1 is found automatically (`SECTORS_API_KEY` and `GEMINI_API_KEY`).
+
+## Run it (two terminals)
+
+<Steps>
+  <Step title="Terminal 1: the backend">
+    From `day3/starter`, with the `.venv` active:
+
+    ```bash
+    uvicorn backend.main:app --reload --port 8000
+    ```
+  </Step>
+  <Step title="Terminal 2: the interface">
+    From `day3/starter/frontend`:
+
+    ```bash
+    npm run dev
+    ```
+  </Step>
+  <Step title="Open the page">
+    Open the address Vite prints (`http://localhost:5173`). Click an example question.
+
+    Check the backend alone at `http://127.0.0.1:8000/api/health` (it should say `{"status":"ok"}`).
+  </Step>
+</Steps>
+
+## Where things go wrong
+
+| Symptom | Likely cause |
+|---|---|
+| "Something went wrong: Server error (500)" in the chat | the backend raised an error; read terminal 1 and `logs/app.log` |
+| Page loads, every question fails with a network error | the backend is not running (check `/api/health`) |
+| `npm install` fails or hangs | the OCBC proxy: ask IT for `npm config set proxy` and `https-proxy` values |
+| Backend: `No module named 'backend'` | run `uvicorn` from `day3/starter`, not from inside `backend/` |
+
+## For Day 4
+
+- `logs/app.log` already records every request with its status and duration in ms, and every agent error with its traceback. Module 9 reads it.
+- `npm run build` writes the finished interface to `frontend/dist/`: plain files that a web server (nginx, Module 10) can serve. Only the backend needs to run as a managed process.
+- In production nginx forwards `/api` to port 8000, exactly what `vite.config.js` does in development, so the code does not change.

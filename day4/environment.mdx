@@ -1,0 +1,56 @@
+---
+title: "3. Environment configuration"
+description: "Install the tools, create the Python environment, lock down the files and test the backend by hand."
+sidebarTitle: "3. Environment"
+icon: "sliders"
+---
+
+Log in with `ssh root@<server-ip>` and run these on the server.
+
+<Steps>
+  <Step title="Install the tools">
+    `python3-venv` creates the package folder and `nginx` is the web server.
+
+    ```bash
+    apt update
+    apt install -y python3-venv nginx
+    ```
+  </Step>
+  <Step title="Create the Python environment and install the packages">
+    ```bash
+    cd /opt/idx-assistant
+    python3 -m venv .venv
+    .venv/bin/pip install -r requirements-server.txt
+    ```
+  </Step>
+  <Step title="Lock down the files">
+    The service runs as the `www-data` user, which has no login and no admin rights, so it owns the folder and only it reads the keys.
+
+    ```bash
+    mkdir -p logs
+    chown -R www-data:www-data /opt/idx-assistant
+    chmod 600 /opt/idx-assistant/.env
+    ```
+
+    <Warning>
+    `chmod 600` makes `.env` readable by its owner only. Do not skip it: the file holds your keys.
+    </Warning>
+  </Step>
+  <Step title="Start the backend by hand to test it">
+    ```bash
+    cd /opt/idx-assistant
+    sudo -u www-data .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+    ```
+
+    The address `127.0.0.1` means the backend listens for programs on the same machine only. nginx is the public entrance.
+  </Step>
+  <Step title="Check the backend">
+    Open a second PowerShell window, log in to the server again, and check the backend.
+
+    ```bash
+    curl http://127.0.0.1:8000/api/health
+    ```
+
+    The answer is `{"status":"ok"}`. Press **Ctrl+C** in the first window to stop the test.
+  </Step>
+</Steps>
