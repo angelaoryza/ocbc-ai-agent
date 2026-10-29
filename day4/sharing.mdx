@@ -1,0 +1,56 @@
+---
+title: "Part 4: Sharing the system"
+description: "The peer sharing session: preparing to share, a five-minute walkthrough, feedback and next steps."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Part 4 covers the peer sharing session. Each participant presents the use case and the prototype built during the masterclass, and the group discusses next steps.
+
+## 4.1 Preparing to share
+
+A good share answers four questions in a few minutes. Prepare one short answer for each.
+
+| Question | What to prepare |
+|----|----|
+| What problem does it solve? | One sentence naming who asks what, and why it matters. For example, "Relationship managers ask about bank ratios and need an answer in seconds." |
+| What does it do? | A live demo with two or three sample questions and one unexpected input |
+| How is it built? | One line each for<br />• The data source<br />• The tools<br />• The agent<br />• The interface<br />• Where it runs |
+| What did testing show? | One failure you found<br />• How you found it in the test sheet or the log<br />• How you fixed it |
+
+Also prepare what does not work yet. A prototype with a clear list of limits is more useful to peers than one that claims to do everything.
+
+## 4.2 A five-minute walkthrough
+
+| Step | Time | What to show |
+|----|----|----|
+| The use case | 1 minute | The problem and the user |
+| The demo | 2 minutes | Two sample questions and one unexpected input, live |
+| How it is built | 1 minute | The layers and the tools |
+| What testing found and what is next | 1 minute | One fix, and the next step you plan |
+
+Open the demo with the sample questions, because they show the system at its best. Then send the unexpected input, because it shows what you did to make the system reliable. If something fails during the demo, open the log. Showing how you find the cause is part of the walkthrough.
+
+## 4.3 Giving and using feedback
+
+Peers see the system the way a new user does. Ask them for specific things.
+
+| Ask peers | Why |
+|----|----|
+| Which question do you ask this system first? | It shows the use the builder did not plan for |
+| Where did the answer surprise you? | It points to a quality check that is missing |
+| What do you need before you use it every day? | It shows the gap between a prototype and a daily tool |
+
+Write each piece of feedback on a list, and mark the layer it belongs to, as in [section 1.6](/day4/finishing-and-testing). The list becomes the plan for the next version.
+
+## 4.4 Discussing next steps
+
+| Direction | What it means | Where it builds |
+|----|----|----|
+| More data | Add tools for more Sectors endpoints or another source | Data layer and tools, Days 1 and 2 |
+| More automation | Run reports or alerts on a schedule | Automation layer, Days 1 and 2 |
+| Better answers | Turn the failures on the test sheet and in the log into prompt and tool fixes | Agent layer and Part 1 |
+| A better page | Add what peers asked for, such as a new example question or a table of results | Interface layer, Day 3 |
+| More users | Watch response time and failed requests in the log as use grows | Hosting, Parts 2 and 3 |
+
+Choose one next step and one owner for it. A prototype improves when each round ends with a short list of changes.

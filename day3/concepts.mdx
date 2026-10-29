@@ -1,0 +1,327 @@
+---
+title: "Building the end-to-end interface"
+description: "The agent gets a web page: interface options, HTML, CSS and JavaScript, React, the FastAPI doorway, AI-assisted coding and the backend log."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+The agent gets a web page. The page runs on your laptop today, and Day 4 moves it to a server.
+
+## 1.1 From script to interface
+
+You have a Python agentic AI script. It is the backend of your system, and it works. Using it takes three steps.
+
+- Run the script by hand.
+- Edit the question inside the file.
+- Read the answer in a terminal.
+
+This suits the person who wrote the script. It does not suit a relationship manager. An interface removes all three steps. The user does this instead.
+
+- Types a question.
+- Presses a button.
+- Reads the answer without seeing any code.
+
+## 1.2 Interface options
+
+| Option | What it is | Example in this course |
+|----|----|----|
+| Web app front end | A page opened in a browser | The IDX Market Assistant page |
+| Chatbot interface | A web app where the input is a conversation | The chat box on the page |
+| Scheduled or triggered automation | A script that starts on a timer or on a condition and needs no input page | The scheduled alert agent from Day 2 |
+
+The chatbot and the web app are the same page in this course. A program installed on a device, an app, is a fourth possibility, and the course does not build one.
+
+A scheduled or triggered automation has no page where the user types. Its interface is its output, the place where the result arrives. A user reads that result without asking for it.
+
+| Output | Example |
+|----|----|
+| An email | The morning report, sent at 07:30 |
+| A message or alert | A note to the team when a bank moves more than a set percentage |
+| A file or a saved record | A report saved in a folder or a row added to a database |
+
+The agent behind it is the same. Only the way it starts and the way its result reaches the user change. The course builds a web app for three reasons.
+
+- Nothing to install. Users open a link in a browser.
+- One version. An update on the server reaches every user.
+- Any device with a browser can use it.
+
+## 1.3 HTML, CSS, and JavaScript
+
+Every web page is built from three languages.
+
+| Part | Role | Defines | In the starter |
+|----|----|----|----|
+| HTML | Structure | What the page contains | The tags in `App.jsx` and `index.html` |
+| CSS | Styling | What the page looks like | `App.css` |
+| JavaScript | Behavior | What each part of the page does | The functions in `App.jsx` |
+
+The usual order of learning is HTML and CSS first, then JavaScript.
+
+- HTML and CSS become usable in one to two days.
+- JavaScript takes much longer. Controlling how a page behaves takes a large amount of effort and knowledge, and it does not fit in the time of this course.
+
+So the course hands the behavior to React. React takes over the logic that keeps the page in step with its data. Copilot writes the code around it, and you read the result and test it.
+
+A browser asks a server for a page. The server sends back HTML, CSS, and JavaScript, and the browser runs them. The page then sends more requests, such as a question for the agent, and the server sends back answers. The messages are written in JSON, a text format that looks like a Python dict.
+
+```json
+{"message": "Which bank has the highest ROE?", "thread_id": "abc-123"}
+{"reply": "BBCA has the highest ...", "tools_used": ["get_top_banks"]}
+```
+
+The browser runs JavaScript. It does not run Python. Section 1.5 shows how the page reaches your Python agent.
+
+## 1.4 React and components
+
+React is a JavaScript library for building a page out of components. It takes over the logic that keeps the page in step with its data. You describe what the page looks like, and React redraws it when the data changes. The files still contain JavaScript. The code you read in `App.jsx` is JavaScript, and Copilot writes most of it.
+
+A **component** is a piece of the page with its own logic and appearance. It can be as small as a button or as large as an entire page.
+
+| Example | Size |
+|----|----|
+| The Send button | Small |
+| One chat bubble | Small |
+| The list of messages | Medium |
+| The whole chat page | Large |
+
+In the starter, `App` is the only component. It is the whole page, and everything inside it is HTML-like tags.
+
+**State** is a variable that React watches. When it changes, the page redraws. This is the smallest complete example, a button that counts clicks.
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0)
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Clicked {count} times
+    </button>
+  )
+}
+```
+
+| Line | What it does |
+|----|----|
+| `function Counter()` | Defines a component. |
+| `useState(0)` | Creates a state variable called `count` that starts at 0, and a function called `setCount` that changes it. |
+| `return ( ... )` | The layout. It shows the current value of `count`. |
+| `onClick={() => setCount(count + 1)}` | When the button is clicked, adds 1 to `count`. React sees the change and redraws the button. |
+
+The starter page follows the same pattern with four state variables.
+
+| State variable | Holds | Part of the page it controls |
+|----|----|----|
+| `messages` | The list of chat bubbles | The bubbles |
+| `input` | The text in the box | The text box |
+| `loading` | True while waiting for the backend | The Thinking bubble and the disabled button |
+| `threadId` | A random id created once on page load | Nothing visible, it is sent with every question |
+
+A plain variable cannot do this job. React runs the component function again on every redraw, so an ordinary variable starts over each time. Changing it also tells React nothing, so the page stays as it was. `useState` fixes both problems. React remembers the value between redraws, and the setter function tells React to redraw with the new value.
+
+**Props** carry data from one component to another. A parent passes them like attributes on a tag, and the child reads them by name. Props are read-only. A component never changes its own props, and anything that must change goes into state.
+
+```jsx
+function Bubble({ role, text }) {
+  return <div className={role}>{text}</div>
+}
+
+// used by the parent
+<Bubble role="user" text="Which bank has the highest ROE?" />
+```
+
+The starter keeps every piece in the one `App` component, so it has no props to read. The moment you split the page into smaller components, such as a `Bubble`, props are how the data travels down.
+
+**Loading and error states.** React describes the page for each situation and lets the state decide which description shows. The starter page has three situations.
+
+| Situation | State that says so | What the page shows |
+|----|----|----|
+| Waiting for the agent | `loading` is true | The Thinking bubble, and the Send button is disabled |
+| The agent answered | `loading` is false, a new item in `messages` | The reply as a new bubble |
+| The backend failed | `loading` is false, an error item in `messages` | A short error bubble |
+
+The event function only changes state. The layout then reads the state and decides what to show. Keep the state small. If one variable can be worked out from another, such as an empty box from the length of `input`, do not store it twice, because two copies can disagree.
+
+**Lists and keys.** The chat is an array of messages. The layout turns the array into bubbles with `.map()`, which runs a function on each item and collects the results. Each bubble gets a `key`, a value that is unique among its siblings and does not change between redraws. React uses the key to match each bubble to its item, so it can update the right one when the list grows. The starter uses the position in the list, which is safe because messages are only ever added at the end. If messages could be removed or reordered, an id is the better key. A random number made during the redraw never works, because it changes every time.
+
+The file `frontend/src/App.jsx` has four blocks, like four notebook cells.
+
+| Block | Contains |
+|----|----|
+| 1, Settings | The title and example questions, as plain variables |
+| 2, State | The variables the page watches |
+| 3, Functions | What happens when the user sends a question |
+| 4, Layout | The HTML-like code after `return`, which shows the state |
+
+One rule ties the blocks together. When a state variable changes, React redraws the layout. Copilot handles these parts, so you can skim past them.
+
+- `useEffect` and `useRef`, which scroll the chat to the bottom.
+- `.map()` and `key`, which turn the list of messages into bubbles, as described above.
+- `async` and `await`, which wait for the backend.
+- `event.preventDefault()`, which stops the browser from reloading the page.
+
+## 1.5 Connecting the page to the agent
+
+The browser runs JavaScript. It cannot run your Python agent. The page needs an address to send a question to, and a program at that address that runs the agent and sends back the answer. Your Python agent is the backend, and it needs a doorway, a small Python file at `backend/main.py`. This is its main route.
+
+```python
+@api.post("/chat")
+def chat(request: ChatRequest):
+    return ask_agent(request.message, request.thread_id)
+```
+
+When the page sends a question to the address `/api/chat`, this function runs the agent and sends back what the agent returns.
+
+The type in `request: ChatRequest` does real work. `ChatRequest` is a small class that lists the fields a request must carry, a `message` and a `thread_id`. From that declaration FastAPI reads the JSON body, checks that each field has the right type, and hands the function a ready object. If the body is wrong, for example a message that is a number or missing, FastAPI answers with a 422 error that names the bad field, and the function never runs. The starter page sends the right shape every time, so you will mostly meet this error in the `/docs` test page. The 400 for an empty message is different. It is a rule of ours, written inside the function.
+
+The function is a plain `def` and not `async def`. The agent call waits on Gemini and Sectors, and it does not use `await`. FastAPI runs a plain `def` route in a separate worker thread, so one slow question does not freeze the other requests. FastAPI's own guidance is to use plain `def` when the code calls a library that blocks, and when in doubt.
+
+| Piece | Role |
+|----|----|
+| FastAPI | The Python library that connects an address to a function |
+| uvicorn | The program that listens on port 8000 and passes each request to FastAPI |
+| `agent.py` | The Day 2 agent, wrapped in a function that returns data |
+
+The page sends the question and a `thread_id`. The backend returns the reply and the list of tools the agent used. The `thread_id` names the conversation. The agent stores its history under that name, so follow-up questions work.
+
+| Status code | Meaning | What the page shows |
+|----|----|----|
+| 200 | The agent answered | The reply and the tools used |
+| 400 | The request was empty | The message from the backend |
+| 500 | The backend failed | A short error message |
+| 502 | The proxy cannot reach the backend | Server error (502) |
+
+The page runs at port 5173 and the backend at port 8000. A browser blocks a page from calling a different address without the server's permission. The page avoids this by calling `/api/chat` on its own address, and Vite forwards anything that starts with `/api` to port 8000. On Day 4, nginx does the same job on the server.
+
+To test the backend alone, open `http://127.0.0.1:8000/docs` while it runs. FastAPI builds a test page that lists every route. Then follow these steps.
+
+1. Open **POST /api/chat**.
+2. Choose **Try it out**.
+3. Enter a message.
+4. Press **Execute**.
+
+| Data | Lives in | Lost when |
+|----|----|----|
+| The chat bubbles | Browser memory | The page is refreshed |
+| The agent's conversation history | The backend process | The backend restarts |
+
+## 1.6 Running the starter
+
+Two programs run at the same time, the backend and the page. Each needs its own terminal window.
+
+**Step 1, create the `.env` file.** In the course folder, copy `.env.example` to `.env` and replace the placeholders with your keys. Use the raw key, with no quotes and no `Bearer`.
+
+```text
+SECTORS_API_KEY=your key here
+GEMINI_API_KEY=your key here
+```
+
+**Step 2, open a terminal in VS Code and activate the `.venv` environment from Day 1.** The prompt starts with `(.venv)` when it is active. Then install the two web packages.
+
+```bash
+# Windows
+.venv\Scripts\activate
+
+# macOS or Linux
+source .venv/bin/activate
+
+pip install -r day3/starter/requirements-web.txt
+```
+
+**Step 3, start the backend.**
+
+```bash
+cd day3/starter
+python -m uvicorn backend.main:app --reload --port 8000
+```
+
+The terminal prints `Application startup complete`. Open `http://127.0.0.1:8000/api/health` in a browser. It shows `{"status":"ok"}`. Leave this window open.
+
+**Step 4, start the page in a second terminal.**
+
+```bash
+cd day3/starter/frontend
+npm install
+npm run dev
+```
+
+The `npm install` command is needed on the first run only. The terminal prints the address `http://localhost:5173`.
+
+**Step 5, ask a question.** Open `http://localhost:5173` and click an example question. After a few seconds the answer appears with a line that names the tools used.
+
+To change the page, follow these steps.
+
+1. Open `frontend/src/App.jsx`.
+2. Change the text of `TITLE` near the top.
+3. Save the file.
+
+The page title changes without a reload.
+
+| Symptom | Cause | Fix |
+|----|----|----|
+| The prompt has no `(.venv)` at the start | The environment is not active in this terminal | Run the activate command from the course folder |
+| Backend stops with "API key required for Gemini" | The `.env` file or the key is missing | Create `.env` in the course folder |
+| Page shows Server error (502) | The backend is not running | Start the backend and open `/api/health` |
+| Page shows Server error (500) | The backend failed | Read the backend terminal. A wrong key is the usual cause |
+| A new key is in `.env` but the old one is still used | The backend reads `.env` once at startup | Press Ctrl+C in the backend terminal and start it again |
+| `npm install` fails or hangs | The network proxy blocks the npm registry | Ask IT for the proxy settings |
+
+## 1.7 AI-assisted coding
+
+You change the page by describing what you want to Copilot. The work follows a loop.
+
+1. Describe one change to Copilot.
+2. Copilot edits the file.
+3. Save the file. The page updates in the browser.
+4. Check the page against what you asked for.
+5. Describe the next change.
+
+| Habit | Example |
+|----|----|
+| Name the file | "In App.jsx, ..." |
+| Say what you see and what you expect | "The Send button stays gray after I type. It should turn red." |
+| Ask for one change per prompt | One of these per prompt<br />• One button<br />• One color<br />• One layout change |
+| Paste the error text | Copy it from the terminal or the browser console |
+
+| File | Controls |
+|----|----|
+| `frontend/src/App.jsx` | What the page shows and does |
+| `frontend/src/App.css` | • Colors<br />• Spacing<br />• Shapes |
+| `backend/agent.py` | The tools and the system prompt |
+
+Leave these files as they are.
+
+- `index.html`
+- `main.jsx`
+- `vite.config.js`
+- `main.py`
+
+| Goal | Prompt | File |
+|----|----|----|
+| Add a button | "In App.jsx, add a button that clears the conversation." | `App.jsx` |
+| Change the look | "In App.css, change the accent color to dark blue." | `App.css` |
+| Change the layout | "In App.css, make the chat bubbles narrower on a phone." | `App.css` |
+| Add a side list | "In App.jsx, add a sidebar that lists BBCA, BBRI, BMRI, and NISP. A click asks for that bank's overview." | `App.jsx` |
+| Add a tool | "In agent.py, add a tool that returns the dividend yield of a bank, and update the system prompt." | `agent.py` |
+
+| Symptom | Layer | Where to look |
+|----|----|----|
+| A tool returns wrong data | Data | Run the tool in a notebook |
+| The page shows Server error (500) | Backend | The backend terminal |
+| The page shows Server error (502) | Backend | The backend is not running, open `/api/health` |
+| The page is blank or does not react | Interface | The browser console, opened with F12 |
+
+## 1.8 What the backend logs
+
+While you test the page, the backend writes one line for every request. A **log** is a text file where a program writes what it did. The backend writes it to the terminal and to `logs/app.log`, in the `day3/starter` folder.
+
+```text
+2026-10-29 09:14:02,311 INFO POST /api/chat -> 200 in 4300 ms
+```
+
+| Part of the line | Meaning |
+|----|----|
+| `2026-10-29 09:14:02,311 INFO` | The time and the level of the message |
+| `POST /api/chat` | The request the page sent |
+| `200` | The status code from section 1.5 |
+| `4300 ms` | How long the request took |
+
+When the page shows an error, the log line and the error details under it tell you which layer failed. The code that writes these lines is in `backend/main.py`, in Blocks 1 and 2. Day 4 explains that code, shows how to add the same logging to your own system, and reads the log to find failed and slow requests.

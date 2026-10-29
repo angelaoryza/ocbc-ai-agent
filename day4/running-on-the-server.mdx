@@ -1,0 +1,134 @@
+---
+title: "Part 3: Running the system on the server"
+description: "SSH, how a browser reaches the server, domains, managed processes, keys on the server, and confirming the logs."
+sidebarTitle: "Concepts"
+icon: "book-open"
+---
+
+Part 3 follows the app from the day it arrives on the server to the day people use it. The commands for every step are in `day4/DEPLOYMENT.md`, which is the [deployment guide](/day4/deployment) on this site.
+
+## 3.1 Remote access with SSH
+
+The VPS has no screen, so you reach it from your laptop. **SSH**, Secure Shell, opens an encrypted command line on another computer. Every command you type runs on the server.
+
+```powershell
+ssh root@<server-ip>
+```
+
+The command has three parts. `ssh` is the program. `root` is the account on the server. The `@` reads as "at", so the whole command says "log in as root at this address".
+
+You log in with a username and a password, or with a key file. After the login, the prompt shows the server's name. The command `exit` returns you to your laptop.
+
+File copying uses the same connection. The command `scp` copies files from your laptop to the server.
+
+```powershell
+scp -r backend root@<server-ip>:/opt/idx-assistant/
+```
+
+| Command | Runs on | What it does |
+|----|----|----|
+| `ssh root@<server-ip>` | Your laptop | Opens a command line on the server |
+| `scp` | Your laptop | Copies files to the server over SSH |
+| `exit` | The server | Closes the session |
+
+Many command names are shortened phrases. Once you know the long form, the name explains itself.
+
+| Command | Long form | How to remember it |
+|----|----|----|
+| `ssh` | Secure Shell | A shell is a command line. Secure means the connection is encrypted |
+| `scp` | Secure Copy | It works like `cp`, the copy command, and it travels over SSH. The `-r` flag means recursive, so it copies a folder and everything inside it |
+| `root` | The root user | The administrator account of a Linux server, the top of the account tree |
+| `exit` | Exit | Leaves the session and returns you to your laptop |
+
+## 3.2 How a browser reaches the server
+
+A browser needs two things to find the app, the address of the server and the port of the program.
+
+| Term | Meaning | In this course |
+|----|----|----|
+| IP address | The number that identifies a computer on a network | The address of the VPS |
+| Port | A numbered entrance on a computer | 80 for the web server and 8000 for the backend |
+| Domain | A name that points to an IP address | Optional. Without one, the page opens by IP address |
+
+Typing `http://<server-ip>` in a browser connects to port 80. Port 80 belongs to nginx, a web server. nginx is pronounced "engine x", and it works as a **reverse proxy**. It sits at the entrance and decides where each request goes.
+
+1. The browser asks nginx for the page. nginx sends back the built files from the `dist` folder.
+2. The page asks for `/api/chat`. nginx forwards the request to the backend on port 8000.
+3. The backend runs the agent and returns the answer. nginx passes it back to the browser.
+
+The backend listens on `127.0.0.1`, an address that only programs on the same computer can use. Users reach the backend through nginx. This is the job the Vite proxy did on your laptop on Day 3.
+
+## 3.3 Why have a domain
+
+Without a domain, users type the IP address of the server. A **domain** is a name that points to that address. The system that does the pointing is **DNS**, the Domain Name System. It works like a phone book. You look up a name and get a number.
+
+| Without a domain | With a domain |
+|----|----|
+| Users type `http://203.0.113.25` | Users type `assistant.example.com` |
+| A number is hard to remember and hard to say in a meeting | A name is easy to remember and easy to say |
+| If the server changes address, every user and every saved link breaks | You change one DNS record, and every saved link keeps working |
+| One address serves one app | One server can serve several apps, each under its own name |
+
+A domain also helps in two further ways. Users recognize a familiar name more easily than a string of numbers. The encrypted connection, https, is set up for a name and not for a bare number, so a domain is the first step toward it. The course does not set up https.
+
+Using a domain takes three things.
+
+| What you need | What it is |
+|----|----|
+| A registered name | Bought from a registrar, or given to you by whoever manages domains in your organization |
+| A DNS record | An **A record** that connects the name to the IP address of the VPS. A change can take from a few minutes to a few hours to spread |
+| The name in nginx | The `server_name` line in the nginx configuration, so nginx knows which name it serves |
+
+The starter does not require a domain. Its nginx file has `server_name _;`, which accepts any name, so the page opens by IP address. When you have a domain, replace `_` with the name and reload nginx. [Section 9 of `day4/DEPLOYMENT.md`](/day4/domain) lists the steps.
+
+## 3.4 Keeping the backend running
+
+On your laptop, the backend stops when you close its terminal window. On a server, the backend has to keep running with nobody logged in. A **managed process** does this. A program called a process manager does three jobs.
+
+- It starts the backend.
+- It watches the backend.
+- It restarts the backend after a crash.
+
+The course uses systemd, the process manager built into most Linux servers. The name is "system daemon". A daemon is a program that runs in the background with nobody watching. The command `systemctl`, short for "system control", is how you talk to it, for example `systemctl status idx-assistant`. A short service file tells systemd what to run.
+
+| What systemd does | Result |
+|----|----|
+| Starts the backend when the server boots | The app is back after a server restart |
+| Restarts the backend after a crash | A failure lasts a few seconds |
+| Collects what the backend prints | `journalctl` shows it |
+| Runs the backend as a user without login or admin rights | The backend has limited access to the system |
+
+## 3.5 Keys and settings on the server
+
+The backend reads its keys from a `.env` file, as it did on your laptop. On the server, the file sits in the project folder, `/opt/idx-assistant/.env`.
+
+- The file travels over SSH and never goes into git.
+- Only the service user can read it.
+- A new key takes effect after the backend restarts, because the backend reads the file once at startup.
+
+Settings that differ between machines, such as keys, live in this file and not in the code. The code is identical on the laptop and on the server.
+
+## 3.6 Confirming the logs on the server
+
+The logging code from [section 1.4](/day4/finishing-and-testing) travels to the server with the rest of `backend/`. A deployment is not finished until the server writes its own log. The backend keeps two logs on the server.
+
+| Log | Command | Holds |
+|----|----|----|
+| `logs/app.log` | `tail -n 20 /opt/idx-assistant/logs/app.log` | The request lines and the error details |
+| The systemd journal | `journalctl -u idx-assistant -n 30 --no-pager` | The start and stop messages and everything the backend prints |
+
+To confirm that the deployed system writes its logs, follow these steps.
+
+1. Open `http://<server-ip>` in a browser and ask an example question.
+2. On the server, run `tail -n 5 /opt/idx-assistant/logs/app.log`.
+3. Check that a new `POST /api/chat` line and a chat line appear, with the time of your question.
+4. Ask an empty question and a question the system does not expect. Check that the 400 and the error lines appear.
+5. Run `journalctl -u idx-assistant -n 10 --no-pager` and check that it shows the service running.
+
+| If you see | Likely cause | Fix |
+|----|----|----|
+| No new line in `app.log` | The service user cannot write to `/opt/idx-assistant/logs` | Create the folder and give it to the service user, as in `DEPLOYMENT.md` |
+| No new line in either log | The request did not reach the backend | Check `systemctl status idx-assistant` and the nginx configuration |
+| A line with 500 and an ERROR | The backend ran and the agent failed | Read the error details. A missing or wrong key in the server's `.env` is the usual cause |
+
+From here, the checks of [section 1.5](/day4/finishing-and-testing) apply on the server. Run the test sheet against the server address, then read the log after each row.

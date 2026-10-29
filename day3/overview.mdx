@@ -1,44 +1,56 @@
 ---
 title: "Day 3 overview"
-description: "A working chat interface for the Day 2 agent: a React page and a FastAPI backend."
+description: "Building the interface and starting your own system: the agent gets a web page."
 sidebarTitle: "Overview"
 icon: "map"
 ---
 
-A working chat interface for the Day 2 agent. Run it first, then change it with Copilot.
+## Background
 
-The starter is in `day3/starter/`.
+On Day 2, the agent learned to ask for the data it needs. It runs from a Python script, and using it takes three steps.
 
-## How a question travels
+- You run the script by hand.
+- You edit the question inside the file.
+- You read the answer in a terminal.
 
-```mermaid
-flowchart LR
-    A[Browser] --> B["React<br/>frontend/"]
-    B -->|/api/chat| C["FastAPI<br/>backend/main.py"]
-    C --> D["Agent<br/>backend/agent.py"]
-    D --> E[Sectors + Gemini]
-```
+Day 3 builds the Interface row of the framework table from Day 1, the place where people meet the system.
 
-## What you edit
+<Frame caption="The IDX Market Assistant, from the browser page to the Sectors data">
+  <img src="/images/day3/browser-to-sectors.png" alt="The IDX Market Assistant, from the browser page to the Sectors data" />
+</Frame>
 
-| You edit this | To change |
-|---|---|
-| `frontend/src/App.jsx` | what the page shows and does (title, example questions, layout) |
-| `frontend/src/App.css` | colours and styling |
-| `backend/agent.py` | the tools and the system prompt (the agent layer) |
+**Day 3 in one line, the agent gets a web page.**
 
-You rarely need to open `backend/main.py` (the connecting layer) or `vite.config.js`.
+## Training objectives
 
-## The day in three steps
+By the end of Day 3, participants are able to:
 
-<Columns cols={3}>
-  <Card title="Read the code" icon="code" href="/day3/read-the-code">
-    The blocks of each file, and the rule that ties them together.
-  </Card>
-  <Card title="Set up and run" icon="terminal" href="/day3/setup-and-run">
-    One-time setup, then the backend and the interface in two terminals.
-  </Card>
-  <Card title="Change it with Copilot" icon="wand-magic-sparkles" href="/day3/copilot">
-    Prompts to try, and what to do when something breaks.
-  </Card>
-</Columns>
+- Describe the three interface options and explain why this course builds a web app
+- Name the roles of HTML, CSS, and JavaScript in a web page
+- Explain what a React component and a state variable are, and read the four blocks of `App.jsx`
+- Explain why a browser page needs a doorway to the Python agent, and read a FastAPI route
+- Run the backend and the page together, and ask the agent a question from the page
+- Change the page with AI-assisted coding by describing one change at a time
+- Find an error in the data, backend, or interface layer
+- Find the log the backend writes and read one request line
+
+## Course data and tools
+
+**Data.** The same as Days 1 and 2. Public market data from Sectors reaches the page through the tools in `backend/agent.py`.
+
+**Tools and files.**
+
+| Area | Tool |
+|----|----|
+| Page | React |
+| Page tooling | Vite, which serves the page while you work and builds the final files |
+| Backend | FastAPI and uvicorn |
+| Installing packages | npm for the page and pip for the backend |
+| Coding assistant | GitHub Copilot |
+
+| Folder or file | Holds |
+|----|----|
+| `day3/starter/frontend/` | The React page. You edit `src/App.jsx` and `src/App.css` |
+| `day3/starter/backend/` | The agent in `agent.py` and the doorway in `main.py` |
+| `day3/starter/README.md` | Setup and run commands |
+| `day3/starter/requirements-web.txt` | The Python packages added for the web layer |

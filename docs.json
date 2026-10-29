@@ -157,6 +157,21 @@
             "group": "Day 3",
             "pages": [
               "day3/overview",
+              "day3/glossary"
+            ]
+          },
+          {
+            "group": "Building the end-to-end interface",
+            "icon": "window-maximize",
+            "pages": [
+              "day3/concepts"
+            ]
+          },
+          {
+            "group": "The starter",
+            "icon": "code",
+            "pages": [
+              "day3/starter",
               "day3/read-the-code",
               "day3/setup-and-run",
               "day3/copilot"
@@ -170,27 +185,53 @@
           {
             "group": "Day 4",
             "pages": [
-              "day4/overview"
+              "day4/overview",
+              "day4/glossary"
             ]
           },
           {
-            "group": "Module 10: Deployment",
-            "icon": "server",
-            "pages": [
-              "day4/ssh-access",
-              "day4/build-and-copy",
-              "day4/environment",
-              "day4/managed-process",
-              "day4/reverse-proxy"
-            ]
-          },
-          {
-            "group": "After deployment",
+            "group": "Part 1: Finishing and testing",
             "icon": "clipboard-check",
             "pages": [
-              "day4/logs",
-              "day4/update",
-              "day4/troubleshooting"
+              "day4/finishing-and-testing"
+            ]
+          },
+          {
+            "group": "Part 2: Hosting the web app",
+            "icon": "cloud",
+            "pages": [
+              "day4/hosting"
+            ]
+          },
+          {
+            "group": "Part 3: Running on the server",
+            "icon": "server",
+            "pages": [
+              "day4/running-on-the-server",
+              {
+                "group": "Deployment guide",
+                "icon": "terminal",
+                "pages": [
+                  "day4/deployment",
+                  "day4/ssh-access",
+                  "day4/build-and-copy",
+                  "day4/environment",
+                  "day4/managed-process",
+                  "day4/reverse-proxy",
+                  "day4/logs",
+                  "day4/update",
+                  "day4/troubleshooting",
+                  "day4/domain"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Part 4: Sharing the system",
+            "icon": "users",
+            "pages": [
+              "day4/sharing",
+              "day4/conclusion"
             ]
           }
         ]
