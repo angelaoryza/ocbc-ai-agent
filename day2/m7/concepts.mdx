@@ -36,11 +36,11 @@ An agent needs four things: the **conversation** (its working memory for this qu
 
 ## 7.2 The loop in code
 
-LangChain’s `create_agent` builds the loop for us. We give it three things, the same three a new colleague would need: a **model** (who thinks), **tools** (what it can use) and a **system prompt** (its job description).
+Pydantic AI’s `Agent` runs the loop for us. We give it three things, the same three a new colleague would need: a **model** (who thinks), **tools** (what it can use) and **instructions** (its job description).
 
 ```python
-agent = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)
-result = agent.invoke({"messages": [{"role": "user", "content": "Which bank has the highest ROE?"}]})
+agent = Agent(model, tools=tools, instructions=SYSTEM_PROMPT)
+result = agent.run_sync("Which bank has the highest ROE?")
 ```
 
 **The run is its own audit trail.** The result holds every message in order: each tool request (a plan), each tool result (act and observe), and the final answer. Reading it shows exactly how the agent reached its answer, and it is the evidence for checking that answer (7.3).
@@ -63,12 +63,12 @@ When another program will use the agent’s answer, such as an alert or a dashbo
 
 ## 7.5 Ready-made tools and other services
 
-Not every tool has to be written by hand. LangChain offers **ready-made tools** for common services, and **toolkits** that group several tools behind one sign-in. To the agent they are no different from ours: a name, a description and arguments.
+Not every tool has to be written by hand. Pydantic AI offers **ready-made tools** for common services, such as web search, and through its LangChain adapter an agent can also use LangChain’s **toolkits**, which group several tools behind one sign-in. To the agent they are no different from ours: a name, a description and arguments.
 
 | Tool | Kind | Comes from |
 |----|----|----|
-| Web search | Read | A ready-made LangChain tool |
-| Gmail: draft, send, search, read | Draft: harmless; **send: action** | A ready-made toolkit |
+| Web search | Read | A ready-made Pydantic AI tool |
+| Gmail: draft, send, search, read | Draft: harmless; **send: action** | A ready-made LangChain toolkit, through Pydantic AI’s adapter |
 | Image generation | Action (it costs credits) | Our own tool around the provider’s Python package |
 
 Three principles apply to every outside service:
@@ -87,11 +87,11 @@ Reading data is safe; writing and sending are not. An e-mail cannot be unsent. *
 | **Edit** | The action runs with changes, such as a corrected recipient or subject |
 | **Reject**, with a reason | The action does not run; the agent reads the reason and continues |
 
-Two things make this work. The list of tools that pause is explicit (here, saving a note and sending an e-mail), so reading, searching and drafting run without interruption. And the paused run is kept by a **checkpointer**, under a conversation identifier, so it can continue after the person has decided. Approval is useful only if the reviewer sees the real details (the recipient, the text, the file name) and has time to read them; a habit of approving everything is not a control.
+Two things make this work. The list of tools that pause is explicit (here, saving a note and sending an e-mail), so reading, searching and drafting run without interruption. And the paused run comes back as a list of requests waiting for a decision, together with the conversation so far, so it can continue after the person has decided. Approval is useful only if the reviewer sees the real details (the recipient, the text, the file name) and has time to read them; a habit of approving everything is not a control.
 
 ## 7.7 Memory and limits
 
-The checkpointer is also the agent’s **short-term memory**: every turn in the same conversation is kept, so a follow-up such as “Which bank did I just ask about?” works. A new conversation starts empty, and a memory kept in the program disappears when the program stops. Long-term memory (Module 1) needs a database and rules about what may be kept.
+The message history is also the agent’s **short-term memory**: when the earlier messages are passed into the next run, a follow-up such as “Which bank did I just ask about?” works. A new conversation starts empty, and a memory kept in the program disappears when the program stops. Long-term memory (Module 1) needs a database and rules about what may be kept.
 
 | Risk | Control |
 |----|----|

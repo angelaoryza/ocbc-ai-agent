@@ -24,11 +24,11 @@ On Day 1, the system collected data and connected it to the model, but **our cod
 
 By the end of Day 2, participants are able to:
 
-- Explain what a tool is, wrap a Sectors endpoint as a callable tool with `@tool`, and write descriptions that lead the model to the right tool
+- Explain what a tool is, wrap a Sectors endpoint as a callable tool (a plain function with a docstring), and write descriptions that lead the model to the right tool
 - Explain why the model only requests tool calls and our code executes them, and choose the 3 to 5 tools an agent needs
-- Write an agent’s plan, act and observe loop in code with LangChain’s `create_agent`, and read each step in its messages
+- Write an agent’s plan, act and observe loop in code with Pydantic AI’s `Agent`, and read each step in its messages
 - Answer natural-language questions about a company or a ranking with an agent, and check every number against tool results
-- Review and approve an agent’s actions before they run, using `HumanInTheLoopMiddleware` and a checkpointer
+- Review and approve an agent’s actions before they run, using tools that require approval and the run’s message history
 - Explain what MCP is and why an agent needs it, connect to the Sectors MCP server as a client, filter its tools, and mix them with local tools
 - Connect a scheduler, a coded condition and an agent into one triggered flow
 
@@ -40,10 +40,10 @@ By the end of Day 2, participants are able to:
 
 | Area | Tool |
 |----|----|
-| Tools | `@tool` from `langchain.tools` |
-| Agent | `langchain.agents.create_agent` |
-| Approval | `HumanInTheLoopMiddleware`, `InMemorySaver` (LangGraph checkpointer), `Command(resume=...)` |
-| MCP | `fastmcp` `Client` with `StreamableHttpTransport`; LangChain’s MCP adapter `langchain.mcp.MCPAdapter` (beta) |
+| Tools | Plain Python functions with a docstring; `Tool` from `pydantic_ai` to see what the model reads |
+| Agent | `Agent` from `pydantic_ai`, with an OpenAI model |
+| Approval | `Tool(..., requires_approval=True)`, `DeferredToolRequests` and `DeferredToolResults`; memory with `message_history` |
+| MCP | `MCPToolset` from `pydantic_ai.mcp` (built on the FastMCP client) |
 | Scheduling | APScheduler, as on Day 1 |
 
 | Folder | Holds |

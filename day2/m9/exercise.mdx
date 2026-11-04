@@ -73,9 +73,9 @@ import requests
 from datetime import date, timedelta
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
-from langchain.tools import tool
-from langchain.agents import create_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 load_dotenv()
 
@@ -83,9 +83,9 @@ BASE_URL = "https://api.sectors.app/v2"
 HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
 TICKERS = ["BBCA", "BBRI", "BMRI", "NISP"]
 
-llm = ChatGoogleGenerativeAI(
-    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
-    api_key=os.getenv("GEMINI_API_KEY"),
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
 )
 
 
@@ -99,9 +99,9 @@ def get_daily_prices(ticker, days=30):
 
 # ── Given: the agent that explains a move ──────────────────────────────────────
 
-@tool
 def get_prices_after(ticker: str, start_date: str) -> list:
     """Get the daily closing prices of one IDX company from start_date (YYYY-MM-DD) until today.
+
     Args:
         ticker: 4-letter IDX code, e.g. BBRI.
         start_date: the first date, YYYY-MM-DD.
@@ -111,10 +111,10 @@ def get_prices_after(ticker: str, start_date: str) -> list:
     return [{"date": r["date"], "close": r["close"]} for r in response.json()]
 
 
-agent = create_agent(
-    model=llm,
+agent = Agent(
+    model,
     tools=[get_prices_after],
-    system_prompt="You explain big stock moves to relationship managers. Use the price tool. "
+    instructions="You explain big stock moves to relationship managers. Use the price tool. "
                   "At most 4 sentences. Never give buy, sell or hold advice.",
 )
 
@@ -122,8 +122,7 @@ agent = create_agent(
 def explain_move(move):
     question = (f"On {move['date']}, {move['ticker']} closed at {move['close']:,} IDR, "
                 f"{move['change']:+.1%} versus the day before. How did it trade afterwards?")
-    result = agent.invoke({"messages": [{"role": "user", "content": question}]})
-    return result["messages"][-1].text
+    return agent.run_sync(question).output
 
 # ── Your work ──────────────────────────────────────────────────────────────────
 

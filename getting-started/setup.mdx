@@ -13,6 +13,14 @@ icon: "gear"
 ## Set up the course folder
 
 <Steps>
+  <Step title="Get the course folder">
+    Download or clone the course materials from GitHub: [angelaoryza/ai-agent-system](https://github.com/angelaoryza/ai-agent-system).
+
+    ```bash
+    git clone https://github.com/angelaoryza/ai-agent-system.git
+    cd ai-agent-system
+    ```
+  </Step>
   <Step title="Create a virtual environment and install the packages">
     In the course folder:
 
@@ -25,7 +33,7 @@ icon: "gear"
     `requirements.txt` pins exact versions, tested together with Python 3.12.9 (Python 3.11 or newer is supported).
   </Step>
   <Step title="Add your keys to .env">
-    Copy `.env.example` to `.env` and fill in `SECTORS_API_KEY` and `GEMINI_API_KEY`.
+    Copy `.env.example` to `.env` and fill in `SECTORS_API_KEY`, `OPENAI_API_KEY` and `OPENAI_URL`.
 
     For Module 7.5 (optional): `MAGIC_API_KEY`, `MY_EMAIL`, and `credentials.json` from the trainer in this folder.
   </Step>
@@ -34,7 +42,7 @@ icon: "gear"
     python check_setup.py
     ```
 
-    Every line should say ✅ PASS.
+    Every line should say ✅ PASS. The first run downloads the embedding model (about 420 MB, once); do it before class, on a network that can reach huggingface.co.
   </Step>
   <Step title="Choose the notebook kernel">
     In VS Code, open a notebook and choose the `.venv` interpreter as the kernel.
@@ -50,11 +58,13 @@ Run every script from the course folder, for example `python day1/examples/m2_ex
 | `SECTORS_API_KEY` | Your Sectors key ([sectors.app/api](https://sectors.app/api)). The raw key: no `Bearer` prefix. |
 | `SECTORS_BASE_URL` | The Sectors REST API address. Keep the value from `.env.example`. |
 | `SECTORS_MCP_URL` | The Sectors MCP server address. Keep the value from `.env.example`. |
-| `GEMINI_API_KEY` | Your Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)). A paid-tier key is needed for class. |
-| `GEMINI_MODEL` | The Gemini model the notebooks and scripts use. |
+| `OPENAI_API_KEY` | Your OpenAI model key. Your trainer gives you the key. |
+| `OPENAI_URL` | The OpenAI-compatible endpoint address. Your trainer gives you the URL. |
+| `OPENAI_MODEL` | The OpenAI model the notebooks and scripts use. Keep the value from `.env.example`. |
+| `PYDANTIC_AI_NO_BANNER` | Hides Pydantic AI's start-up banner in notebooks and scripts. Keep the value from `.env.example`. |
 | `MAGIC_API_KEY` | Optional, Module 7.5: image generation ([magichour.ai](https://magichour.ai)). |
 | `MY_EMAIL` | Optional, Module 7.5: your e-mail for the Gmail test. |
-| `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` | Only if the OCBC network needs them. Ask IT. |
+| `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` | Only if the OCBC network needs them. Ask IT. If huggingface.co is blocked, ask IT to allow it once: Module 5 downloads the open-source embedding model from there. |
 
 <Warning>
 Never commit or share `.env`. Keys live in `.env` only: never in code, notebooks, prompts, logs or chat messages.
@@ -64,17 +74,17 @@ Gmail also needs `credentials.json` in the course folder, from your trainer. You
 
 ## What `check_setup.py` checks
 
-It checks the Python version, the packages, the keys in `.env` (without printing them), the Sectors API, Gemini chat, Gemini embeddings and the Sectors MCP server, and (optional) what the Module 7.5 tools need. It uses 1 chat call, 1 embedding call and 1 Sectors credit.
+It checks the Python version, the packages, the keys in `.env` (without printing them), the Sectors API, the OpenAI model, the open-source embedding model and the Sectors MCP server, and (optional) what the Module 7.5 tools need. It uses 1 model call and 1 Sectors credit. The first run downloads the embedding model (about 420 MB).
 
 | Check | Passes when |
 |---|---|
 | Python 3.11 or newer | Your Python version is 3.11 or newer |
 | Packages from `requirements.txt` | All course packages import |
 | `.env` file in this folder | `.env` exists in the course folder |
-| `SECTORS_API_KEY` is set, `GEMINI_API_KEY` is set | Each key has a real value |
+| `SECTORS_API_KEY` is set, `OPENAI_API_KEY` is set, `OPENAI_URL` is set | Each value is filled in |
 | Sectors REST API | A request for NISP's company report succeeds |
-| Gemini chat | One chat call answers |
-| Gemini embeddings | One embedding call answers |
+| OpenAI model | One model call answers |
+| Embedding model | The open-source embedding model (`all-mpnet-base-v2`) loads and embeds one text |
 | Sectors MCP server | The server lists its tools |
 | Optional: `MAGIC_API_KEY`, `MY_EMAIL`, `credentials.json` | Shown as ✅ PASS or ⚠️ MISSING; without one, only that tool is skipped |
 

@@ -156,6 +156,10 @@
   "navbar": {
     "links": [
       {
+        "label": "Course materials",
+        "href": "https://github.com/angelaoryza/ai-agent-system"
+      },
+      {
         "label": "Sectors",
         "href": "https://sectors.app"
       },

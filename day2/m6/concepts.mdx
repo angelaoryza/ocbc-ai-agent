@@ -31,16 +31,16 @@ A **tool** is an ordinary function plus a description that a model can read. It 
 | **Argument schema** | **What** to send: names, types, allowed values | The type hints and defaults |
 
 ```python
-@tool
 def get_company_overview(ticker: str) -> dict:
     """Get the profile and latest price of ONE listed company.
     Use it for questions about a single company, e.g. "How did NISP close?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BBCA.
     """
 ```
 
-Marking a function as a tool does not give the model the power to run it, and it does not search or store anything. It only attaches a name, a description and a schema to a function our code still controls.
+Giving a function to the model as a tool does not give the model the power to run it, and it does not search or store anything. The framework only reads a name, a description and a schema from a function our code still controls.
 
 ## 6.3 How tool calling works: the model requests, our code executes
 

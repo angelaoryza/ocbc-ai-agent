@@ -31,7 +31,7 @@ paste into every prompt. With **RAG** the **question** decides which pieces of n
 
 ### Training objectives
 
-- Load saved articles as LangChain documents with metadata
+- Load saved articles as documents (plain dicts) with metadata
 - Choose a chunk size and overlap, and see what they change
 - Explain embeddings and cosine similarity, and compute a similarity yourself
 - Retrieve the closest chunks with `k` and a metadata filter
@@ -43,7 +43,7 @@ Module 2 saved the news in `data/news/`. So that everyone retrieves the same art
 saved on 25 October 2026 in `data/sample/news_<TICKER>.json` (same format, 20 articles per bank). The example and the
 exercise use your own `data/news/`.
 
-Embeddings have a free-tier limit of about 100 texts per minute: run the embedding cells **once**.
+The embedding model runs on your laptop: no key and no quota. The first use downloads it once (about 420 MB).
 
 
 ## 5.1 Load the news
@@ -58,16 +58,15 @@ An RM: **"Why did the bank stocks fall so much in mid October?"** The answer is 
 >
 > - **Key question:** Why not paste all the news into the prompt, and what does a document need to carry?
 > - **How we run it:** **Live, about 5 minutes.**
-> - **What you will do:** turn every article into a `Document` with metadata, and measure what pasting everything would cost.
+> - **What you will do:** turn every article into a document (a plain dict) with metadata, and measure what pasting everything would cost.
 > - **What carries forward:** `docs`, split in 5.2.
 
-A LangChain `Document` holds the text in `page_content` and everything else in `metadata`. Metadata is what lets
+A document is a plain dict: the text in `"text"` and everything else in `"metadata"`. Metadata is what lets
 us **filter** (by ticker) and **cite** (title, date) later. One article can mention two banks, so it can be in two
 files: we keep each title once.
 
 ```python
 import json
-from langchain_core.documents import Document
 
 TICKERS = ["BBCA", "BBRI", "BMRI", "NISP"]
 
@@ -78,15 +77,15 @@ for ticker in TICKERS:
             if article["title"] in seen_titles:
                 continue
             seen_titles.add(article["title"])
-            docs.append(Document(
-                page_content=article["title"] + "\n\n" + article["body"],
-                metadata={"title": article["title"], "date": article["timestamp"][:10],
-                          "source": article["source"], "ticker": ticker},
-            ))
+            docs.append({
+                "text": article["title"] + "\n\n" + article["body"],
+                "metadata": {"title": article["title"], "date": article["timestamp"][:10],
+                             "source": article["source"], "ticker": ticker},
+            })
 
-total_chars = sum(len(d.page_content) for d in docs)
+total_chars = sum(len(d["text"]) for d in docs)
 print(len(docs), "articles,", f"{total_chars:,} characters (about {total_chars // 4:,} tokens) in every prompt")
-docs[0].metadata
+docs[0]["metadata"]
 ```
 
 ### Knowledge check: Paste or retrieve?
@@ -116,20 +115,34 @@ Your manager: **"A long article covers five topics. Retrieve the paragraph that 
 > - **What carries forward:** `chunks`, embedded in 5.4.
 
 ```python
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+def split_text(text, chunk_size=1500, chunk_overlap=100):
+    """Cut a text into pieces of chunk_size characters; each piece repeats the last chunk_overlap characters of the one before."""
+    chunks, start = [], 0
+    while True:
+        chunks.append(text[start:start + chunk_size])
+        if start + chunk_size >= len(text):
+            return chunks
+        start += chunk_size - chunk_overlap
 
-splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
-chunks = splitter.split_documents(docs)
 
-print(len(docs), "articles ->", len(chunks), "chunks; longest", max(len(c.page_content) for c in chunks), "characters")
-print(chunks[0].metadata)
+def split_documents(docs, chunk_size=1500, chunk_overlap=100):
+    # Every piece keeps the metadata of its article
+    return [{"text": piece, "metadata": doc["metadata"]}
+            for doc in docs for piece in split_text(doc["text"], chunk_size, chunk_overlap)]
+
+
+chunks = split_documents(docs)
+
+print(len(docs), "articles ->", len(chunks), "chunks; longest", max(len(c["text"]) for c in chunks), "characters")
+print(chunks[0]["metadata"])
 ```
 
 ### Your turn: Compare chunk sizes
 
 Split `docs` with `chunk_size` 500, 1500 and 4000 (overlap 10% of the size) and print, for each size, the number
 of chunks and the average chunk length. Do **not** embed them. The right result: the smaller the size, the more chunks
-(500 gives several times as many as 1500). Which size fits our 100-texts-per-minute embedding limit?
+(500 gives more than twice as many as 1500). all-mpnet-base-v2 reads at most 384 tokens (about 1,500 characters) of a
+text and ignores the rest: which size fits?
 
 ```python
 ## Your code below
@@ -160,26 +173,27 @@ shares"*. Not one word in common.
 > - **Key question:** How can a search find meaning instead of matching words?
 > - **How we run it:** **Live, about 6 minutes.**
 > - **What you will do:** embed three sentences and a question, then compute the similarity yourself.
-> - **What carries forward:** `embeddings`, used by the vector store in 5.4.
+> - **What carries forward:** `embedder`, used by the vector store in 5.4.
 
 An **embedding** turns a text into a long list of numbers; texts with a similar **meaning** point in a similar
-direction. **Cosine similarity** measures that: close to 1 means similar, close to 0 means unrelated. Documents and
-questions are embedded slightly differently (`embed_documents`, `embed_query`).
+direction. **Cosine similarity** measures that: close to 1 means similar, close to 0 means unrelated. We use
+`all-mpnet-base-v2`, an open-source embedding model that runs on your laptop. The embedder has one method for the texts
+we store and one for the question (`embed_documents`, `embed_query`).
 
 ```python
 import numpy as np
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from pydantic_ai import Embedder
 
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview",
-                                          google_api_key=os.getenv("GEMINI_API_KEY"))
+embedder = Embedder("sentence-transformers:all-mpnet-base-v2")   # open source, runs on your laptop
 
 sentences = [
     "Foreign investors sold Indonesian bank shares after the MSCI announcement.",
     "Bank OCBC NISP completed an acquisition in the insurance business.",
     "The weather in Jakarta was sunny on Friday.",
 ]
-sentence_vectors = embeddings.embed_documents(sentences)
-question_vector = embeddings.embed_query("Why did bank stocks drop?")
+result = await embedder.embed_documents(sentences)       # in a .py script: embedder.embed_documents_sync(...)
+sentence_vectors = result.embeddings
+question_vector = (await embedder.embed_query("Why did bank stocks drop?"))[0]
 print(len(sentence_vectors), "vectors of", len(question_vector), "numbers")
 ```
 
@@ -187,7 +201,7 @@ print(len(sentence_vectors), "vectors of", len(question_vector), "numbers")
 
 Write `cosine_similarity(a, b)` (the dot product divided by the product of the two lengths: `np.dot`, `np.linalg.norm`)
 and print the score of the question against each sentence, highest first. The right result ranks the sell-off sentence
-first and the weather sentence last.
+first and the weather sentence last. You will meet this function again in 5.4: the search scores every chunk with it.
 
 ```python
 ## Your code below
@@ -219,24 +233,39 @@ The RM's question again: **"Why did Indonesian bank stocks fall sharply in mid O
 > - **What you will do:** embed all chunks into a vector store, search with `k`, then add a metadata filter.
 > - **What carries forward:** `vector_store`, which `ask_news` uses in 5.5.
 
-A **vector store** keeps every chunk with its embedding and returns the `k` closest to a question.
-`InMemoryVectorStore` is enough for our news (about 80 chunks: one embedding call each, once). A `filter` on the
+Our **vector store** is just the chunks and their vectors side by side. A search embeds the question, scores every
+chunk with cosine similarity (the function you wrote in 5.3, repeated below so this cell runs on its own) and keeps
+the `k` closest. That is enough for our news (about 80 chunks, embedded once on the laptop). A `filter` on the
 metadata keeps only some chunks.
 
 ```python
-from langchain_core.vectorstores import InMemoryVectorStore
+def cosine_similarity(a, b):      # the same function as in 5.3
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-vector_store = InMemoryVectorStore.from_documents(chunks, embeddings)
+
+async def build_vector_store(chunks):
+    result = await embedder.embed_documents([c["text"] for c in chunks])
+    return {"chunks": chunks, "vectors": np.array(result.embeddings)}
+
+
+async def similarity_search(vector_store, query, k=4, filter=None):
+    query_vector = (await embedder.embed_query(query))[0]
+    scored = [(cosine_similarity(query_vector, v), c) for v, c in zip(vector_store["vectors"], vector_store["chunks"])]
+    scored = [(s, c) for s, c in scored if filter is None or filter(c)]
+    return [c for s, c in sorted(scored, key=lambda pair: pair[0], reverse=True)[:k]]
+
+
+vector_store = await build_vector_store(chunks)
 
 question = "Why did Indonesian bank stocks fall sharply in mid October 2026?"
-for doc in vector_store.similarity_search(question, k=4):
-    print(doc.metadata["date"], "|", doc.metadata["ticker"], "|", doc.metadata["title"][:80])
+for doc in await similarity_search(vector_store, question, k=4):
+    print(doc["metadata"]["date"], "|", doc["metadata"]["ticker"], "|", doc["metadata"]["title"][:80])
 ```
 
 ### Your turn: Only one bank, only recent news
 
 An RM covering NISP asks *"What did the bank announce about acquisitions?"* Retrieve the **3** closest chunks, but
-only from **NISP** news **dated 2026-10-01 or later** (the `filter` is a function that gets a `Document` and returns
+only from **NISP** news **dated 2026-10-01 or later** (the `filter` is a function that gets a chunk dict and returns
 `True` to keep it; dates are `YYYY-MM-DD` strings, so `>=` works). Print date, ticker and title. The right result is
 3 NISP chunks, all from October 2026.
 
@@ -271,32 +300,38 @@ Your manager: **"An RM must be able to check every sentence. And if the news doe
 > - **What carries forward:** `ask_news`, which becomes the `search_news` tool on Day 2.
 
 ```python
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
-llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
+)
+rag_agent = Agent(model)
 
 RULES = """Answer the question using only the sources below. Cite them as [1], [2], ...
 If the sources do not answer the question, say "The saved news does not cover this."
 Never give buy or sell advice."""
 
 
-def ask_news(question, k=4):
-    results = vector_store.similarity_search(question, k=k)
+async def ask_news(question, k=4):
+    results = await similarity_search(vector_store, question, k=k)
     sources = ""
     for i, doc in enumerate(results, start=1):
-        sources += f"[{i}] {doc.metadata['title']} ({doc.metadata['date']})\n{doc.page_content}\n\n"
-    answer = llm.invoke(f"{RULES}\n\n<sources>\n{sources}</sources>\n\nQuestion: {question}").text
-    return answer, results
+        sources += f"[{i}] {doc['metadata']['title']} ({doc['metadata']['date']})\n{doc['text']}\n\n"
+    result = await rag_agent.run(f"{RULES}\n\n<sources>\n{sources}</sources>\n\nQuestion: {question}")
+    return result.output, results
 
 
-answer, results = ask_news(question)
+answer, results = await ask_news(question)
 print(answer, "\n")
 for i, doc in enumerate(results, start=1):
-    print(f"[{i}] {doc.metadata['title']} ({doc.metadata['date']})")
+    print(f"[{i}] {doc['metadata']['title']} ({doc['metadata']['date']})")
 ```
 
 ```python
-answer, _ = ask_news("What is BBCA's dividend policy for 2030?")      # not in the news
+answer, _ = await ask_news("What is BBCA's dividend policy for 2030?")      # not in the news
 print(answer)
 ```
 
@@ -304,7 +339,7 @@ print(answer)
 
 Write `ask_bank_news(ticker, question, k=3)`: the same as `ask_news`, but it retrieves only chunks of that ticker
 (your filter from 5.4) and returns the answer and the list of `(date, title)` of the sources. Ask it about **NISP**:
-*"What did the bank announce about acquisitions?"* The right result cites `[1]`–`[3]`, and every source is a NISP article.
+*"What did the bank announce about acquisitions?"* The right result cites its sources (`[1]`, `[2]`, ...), and every source is a NISP article.
 
 ```python
 ## Your code below
@@ -327,7 +362,7 @@ Why does the prompt tell the model to say "The saved news does not cover this."?
 
 - **a.** To save tokens
 - **b.** So the model does not fill a gap with its own guess, which an RM could take as fact
-- **c.** Because Gemini requires it
+- **c.** Because the model provider requires it
 - **d.** To make the answer shorter
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -336,10 +371,10 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 | Step | Here | Decides |
 |---|---|---|
-| Load | `Document` + metadata | what we can filter and cite |
-| Split | `RecursiveCharacterTextSplitter` | what one search hit contains |
-| Embed + store | `GoogleGenerativeAIEmbeddings`, `InMemoryVectorStore` | how meaning is compared |
-| Retrieve | `similarity_search(question, k, filter)` | **which data the model sees** |
+| Load | a dict: `"text"` + `"metadata"` | what we can filter and cite |
+| Split | `split_text` (chunk size, overlap) | what one search hit contains |
+| Embed + store | `Embedder("sentence-transformers:all-mpnet-base-v2")`, chunks and vectors side by side | how meaning is compared |
+| Retrieve | `similarity_search(vector_store, question, k, filter)`, cosine similarity | **which data the model sees** |
 | Answer | numbered sources, rules | whether an RM can check it |
 
 **Day 1 in one line:** *we tell the LLM what the data is.* Tomorrow `ask_news` becomes a tool, and the LLM asks for
