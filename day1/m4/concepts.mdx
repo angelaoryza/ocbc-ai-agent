@@ -33,14 +33,16 @@ Every call also has a **cost** (per token), a **delay** (seconds) and **limits**
 
 ## 4.2 Calling the model from code
 
-In code, the model is a **component behind an interface**. This course uses **LangChain**, which gives every model provider the same small set of operations: send messages and get a reply; ask for a structured answer; offer tools; build an agent. The model is created once, with its name and key, and used everywhere:
+In code, the model is a **component behind an interface**. This course uses **Pydantic AI**, which gives every model provider the same small set of operations: send a prompt and get a reply; ask for a structured answer; offer tools; build an agent. The model is created once, with its name, key and address, and used everywhere:
 
 ```python
-llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", api_key=os.getenv("GEMINI_API_KEY"))
-reply = llm.invoke([("system", SYSTEM_PROMPT), ("human", task)])
+model = OpenAIResponsesModel(os.getenv("OPENAI_MODEL"),
+                             provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")))
+agent = Agent(model, instructions=SYSTEM_PROMPT)
+reply = agent.run_sync(task).output
 ```
 
-Because the rest of the code only uses these common operations, moving from Gemini to the bank’s own approved model means changing one line, not the system. The reply also reports the tokens used: watch it, because a longer prompt or a resent history raises the cost of every call.
+Because the rest of the code only uses these common operations, moving to the bank’s own approved model means changing the model name and address in `.env`, not the system. The result also reports the tokens used: watch it, because a longer prompt or a resent history raises the cost of every call.
 
 ## 4.3 Grounding: Giving the model our data
 
@@ -69,10 +71,8 @@ The digest prompt is used every morning with a different report. A brief for one
 A **prompt template** is the prompt written once, with **blanks** for what changes:
 
 ```python
-digest_prompt = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    ("human", "<report>\n{report}\n</report>\n\n{task}"),
-])
+DIGEST_TEMPLATE = "<report>\n{report}\n</report>\n\n{task}"
+prompt = DIGEST_TEMPLATE.format(report=report, task="Write the digest.")
 ```
 
 Thinking of prompts as templates changes how they are treated:

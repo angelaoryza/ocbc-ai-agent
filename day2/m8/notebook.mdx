@@ -19,7 +19,7 @@ Your agent has four tools, and you wrote and maintain every one. The RM desk kee
 most traded stocks, broker activity. Sectors already runs an **MCP server** with 66 ready-made tools. With **MCP**
 your code connects to it, discovers the tools, keeps the few the job needs, and gives them to the agent next to your own:
 
-- **8.1 Connect and discover.** Transport, client, adapter; the list of tools.
+- **8.1 Connect and discover.** The server connection and the client; the list of tools.
 - **8.2 Call an MCP tool.** The server's own argument names; `await`.
 - **8.3 Choose the tools.** From 66 to the few a job needs, by reading descriptions.
 - **8.4 Mix MCP tools with your own.** One agent, tools from two places.
@@ -28,10 +28,10 @@ Who is the MCP **client**? **Our code**, not the LLM. The LLM still only asks fo
 
 ### Training objectives
 
-- Connect to the Sectors MCP server with `StreamableHttpTransport`, `Client` and `MCPAdapter`
+- Connect to the Sectors MCP server with Pydantic AI's `MCPToolset`
 - Read an MCP tool's description and arguments, and call it with `await`
 - Choose the MCP tools a job needs by searching their descriptions
-- Build an agent with MCP tools and your own tools, and call it with `await agent.ainvoke(...)`
+- Build an agent with MCP tools and your own tools, and call it with `await agent.run(...)`
 
 MCP tools are **asynchronous**: in a notebook you can write `await` directly in a cell.
 
@@ -49,28 +49,26 @@ Your manager: **"Before we write another tool ourselves, see what Sectors alread
 > - **Key question:** How does our code connect to an MCP server, and what does it get back?
 > - **How we run it:** **Live, about 8 minutes.**
 > - **What you will do:** open a connection, list the tools, and look at their names.
-> - **What carries forward:** `transport` and `tools`, used in every section below.
+> - **What carries forward:** `sectors` and `tools`, used in every section below.
 
 | Piece | Here |
 |---|---|
-| **Transport**: how to reach the server | `StreamableHttpTransport(url=SECTORS_MCP_URL, headers={"Authorization": <Sectors key>})` |
-| **Client**: our side of the connection | `Client(transport)` from `fastmcp` |
-| **Adapter**: MCP tools → LangChain tools | `MCPAdapter(...)` from `langchain.mcp`, as in `learning-agent/` |
+| **Server connection**: how to reach the server | `MCPToolset(SECTORS_MCP_URL, headers={"Authorization": <Sectors key>})` from `pydantic_ai.mcp` |
+| **Client**: our side of the connection | the same `MCPToolset`: Pydantic AI builds it on the FastMCP client |
+| **Toolset**: MCP tools → agent tools | pass it to `Agent(model, toolsets=[...])`, no adapter needed |
 
 `async with` opens the session and closes it at the end of the block.
 
 ```python
-from langchain.mcp import MCPAdapter
-from fastmcp import Client
-from fastmcp.client.transports import StreamableHttpTransport
+from pydantic_ai.mcp import MCPToolset
 
-transport = StreamableHttpTransport(
-    url=os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
+sectors = MCPToolset(
+    os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
     headers={"Authorization": os.getenv("SECTORS_API_KEY")},
 )
 
-async with MCPAdapter(Client(transport)) as sector:
-    tools = await sector.list_tools()
+async with sectors:
+    tools = await sectors.list_tools()
 
 print(len(tools), "tools on the Sectors MCP server")
 print([t.name for t in tools][:12])
@@ -80,8 +78,8 @@ print([t.name for t in tools][:12])
 
 In our system, which part is the MCP **client**?
 
-- **a.** Gemini
-- **b.** Our Python code (`fastmcp.Client`)
+- **a.** The OpenAI model
+- **b.** Our Python code (Pydantic AI's `MCPToolset`)
 - **c.** The Sectors server
 - **d.** The RM's browser
 
@@ -89,7 +87,7 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 ### Knowledge check: When is MCP worth it?
 
-When is connecting to an MCP server better than writing our own `@tool` around the REST API?
+When is connecting to an MCP server better than writing our own tool function around the REST API?
 
 - **a.** Always
 - **b.** Never
@@ -111,18 +109,19 @@ An RM: **"How did BBCA trade in the week of 14 to 23 October?"** Use the server'
 > - **Key question:** What does an MCP tool look like, and how do we call it ourselves?
 > - **How we run it:** **Live, about 7 minutes.**
 > - **What you will do:** read a tool's description and arguments, call it with `await`, then call another one yourself.
-> - **What carries forward:** the habit of reading `.args` before using a server's tool.
+> - **What carries forward:** the habit of reading `.input_schema` before using a server's tool.
 
-An MCP tool is a LangChain tool like ours: a **name**, a **description** and **arguments**, but it runs on the Sectors
+An MCP tool is like ours: a **name**, a **description** and **arguments** (in `.input_schema`), but it runs on the Sectors
 server. Its arguments are the **server's** names: `symbol` instead of our `ticker`, and `sections` as a **list**.
+We call it through the toolset: `await sectors.direct_call_tool(name, {...})`.
 
 ```python
-async with MCPAdapter(Client(transport)) as sector:
-    tools = await sector.list_tools()
+async with sectors:
+    tools = await sectors.list_tools()
     report_tool = next(t for t in tools if t.name == "fetch-company-report")
     print(report_tool.description[:250], "...")
-    print(list(report_tool.args))
-    nisp = await report_tool.ainvoke({"symbol": "NISP", "sections": ["overview"]})
+    print(list(report_tool.input_schema["properties"]))
+    nisp = await sectors.direct_call_tool("fetch-company-report", {"symbol": "NISP", "sections": ["overview"]})
 
 print(str(nisp)[:300])
 ```
@@ -139,12 +138,12 @@ Print the first 300 characters of the result. The right result contains the clos
 
 ### Knowledge check: Why `await`?
 
-Why is the agent in this module called with `await agent.ainvoke(...)` instead of `agent.invoke(...)`?
+Why is the agent in this module called with `await agent.run(...)` instead of `agent.run_sync(...)`?
 
-- **a.** `ainvoke` is cheaper
-- **b.** MCP tools are asynchronous: they wait on the network, so the agent must run asynchronously
-- **c.** Gemini requires it
-- **d.** It runs the tools in parallel on Google's servers
+- **a.** `run` is cheaper
+- **b.** MCP tools are asynchronous: they wait on the network, so the agent runs asynchronously
+- **c.** The OpenAI model requires it
+- **d.** It runs the tools in parallel on OpenAI's servers
 
 Answer this in the notebook; the check cell tells you if you are right.
 
@@ -191,7 +190,7 @@ Why not give the agent all 66 Sectors tools?
 
 - **a.** MCP allows only five
 - **b.** Every description goes into every prompt: more cost, and the LLM picks the wrong tool more often
-- **c.** Gemini refuses more than ten
+- **c.** The OpenAI model refuses more than ten
 - **d.** The other tools are not free
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -214,20 +213,54 @@ reasons from **our** saved news.
 
 The agent sees one list of tools; where each runs does not matter to the model. **Rule of thumb:** MCP for the
 provider's data, our own tools for what only we have (our saved news, our actions). The `search_news` tool is the same
-as in Module 6. One new line in the system prompt: **today's date**. Our Module 6 tools computed dates in code; the MCP
+as in Module 6, on the Module 5 news store. One new line in the system prompt: **today's date**. Our Module 6 tools computed dates in code; the MCP
 tools take `start` and `end`, and the model does not know what day it is.
 
 ```python
 import json
-from langchain.tools import tool
-from langchain.agents import create_agent
-from langchain_core.documents import Document
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+import numpy as np
+from datetime import date
+from pydantic_ai import Agent, Embedder
+from pydantic_ai.messages import ToolCallPart
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
-llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=os.getenv("GEMINI_API_KEY"))
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
+)
+embedder = Embedder("sentence-transformers:all-mpnet-base-v2")   # open source, runs on your laptop
+
+# The Module 5 news store: split, embed, search
+def split_text(text, chunk_size=1500, chunk_overlap=100):
+    """Cut a text into pieces of chunk_size characters; each piece repeats the last chunk_overlap characters of the one before."""
+    chunks, start = [], 0
+    while True:
+        chunks.append(text[start:start + chunk_size])
+        if start + chunk_size >= len(text):
+            return chunks
+        start += chunk_size - chunk_overlap
+
+
+def split_documents(docs, chunk_size=1500, chunk_overlap=100):
+    return [{"text": piece, "metadata": doc["metadata"]}
+            for doc in docs for piece in split_text(doc["text"], chunk_size, chunk_overlap)]
+
+
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
+async def build_vector_store(chunks):
+    vectors = (await embedder.embed_documents([c["text"] for c in chunks])).embeddings
+    return {"chunks": chunks, "vectors": np.array(vectors)}
+
+
+async def similarity_search(vector_store, query, k=4):
+    query_vector = (await embedder.embed_query(query))[0]
+    scored = [(cosine_similarity(query_vector, v), c) for v, c in zip(vector_store["vectors"], vector_store["chunks"])]
+    return [c for s, c in sorted(scored, key=lambda pair: pair[0], reverse=True)[:k]]
+
 
 docs, seen = [], set()
 for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
@@ -235,24 +268,21 @@ for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
         for article in json.load(f):
             if article["title"] not in seen:
                 seen.add(article["title"])
-                docs.append(Document(page_content=article["title"] + "\n\n" + article["body"],
-                                     metadata={"title": article["title"], "date": article["timestamp"][:10]}))
-vector_store = InMemoryVectorStore.from_documents(
-    RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100).split_documents(docs), embeddings)
+                docs.append({"text": article["title"] + "\n\n" + article["body"],
+                             "metadata": {"title": article["title"], "date": article["timestamp"][:10]}})
+vector_store = await build_vector_store(split_documents(docs))
 
 
-@tool
-def search_news(query: str) -> str:
+async def search_news(query: str) -> str:
     """Search recent Indonesian market news. Use it to find WHY something happened
     (events, announcements, reasons). It does not give prices.
+
     Args:
         query: what to look for, in plain words.
     """
-    results = vector_store.similarity_search(query, k=4)
-    return "\n\n".join(f"{d.metadata['title']} ({d.metadata['date']})\n{d.page_content}" for d in results)
+    results = await similarity_search(vector_store, query, k=4)
+    return "\n\n".join(f"{c['metadata']['title']} ({c['metadata']['date']})\n{c['text']}" for c in results)
 
-
-from datetime import date
 
 SYSTEM_PROMPT = f"""You are the IDX Market Assistant for relationship managers at a bank in Indonesia.
 Today is {date.today()}. The MCP tools take explicit dates: work them out from today.
@@ -261,18 +291,16 @@ Use search_news to explain why something happened. Never give buy, sell or hold 
 
 
 def tools_used(result):
-    return [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+    return [p.tool_name for m in result.all_messages() for p in m.parts if isinstance(p, ToolCallPart)]
 
 
-async with MCPAdapter(Client(transport)) as sector:
-    tools = await sector.list_tools()
-    agent = create_agent(model=llm, tools=[t for t in tools if t.name in SELECTED] + [search_news],
-                         system_prompt=SYSTEM_PROMPT)
-    result = await agent.ainvoke({"messages": [{"role": "user", "content":
-        "How did BMRI trade over the last week, and what does the news say about why?"}]})
+async with sectors:
+    agent = Agent(model, toolsets=[sectors.filtered(lambda ctx, tool_def: tool_def.name in SELECTED)],
+                  tools=[search_news], instructions=SYSTEM_PROMPT)
+    result = await agent.run("How did BMRI trade over the last week, and what does the news say about why?")
 
 print("Tools used:", tools_used(result))
-print(result["messages"][-1].text)
+print(result.output)
 ```
 
 ### Your turn: An agent for the trading desk
@@ -291,8 +319,8 @@ says whether the net foreign flow was positive (buying) or negative (selling), w
 The RMs want the agent to search **OCBC's internal research notes**. Where should that tool come from?
 
 - **a.** The Sectors MCP server
-- **b.** Our own `@tool`, in our program: it is our data, not the provider's
-- **c.** Gemini's built-in search
+- **b.** Our own tool function, in our program: it is our data, not the provider's
+- **c.** The OpenAI model's built-in search
 - **d.** It cannot be a tool
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -301,11 +329,11 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 | Idea | In code |
 |---|---|
-| Connect | `StreamableHttpTransport` → `Client` → `MCPAdapter`, inside `async with` |
-| Discover | `await sector.list_tools()`: 66 LangChain tools |
-| Call | `await tool.ainvoke({...})` with the server's argument names |
-| Choose | keep a few by name; search descriptions to find them |
-| Mix | `create_agent(tools=mcp_tools + [search_news])`, `await agent.ainvoke(...)` |
+| Connect | `MCPToolset(url, headers=...)` from `pydantic_ai.mcp`, inside `async with` |
+| Discover | `await sectors.list_tools()`: 66 MCP tools |
+| Call | `await sectors.direct_call_tool(name, {...})` with the server's argument names |
+| Choose | keep a few by name with `sectors.filtered(...)`; search descriptions to find them |
+| Mix | `Agent(model, toolsets=[mcp_tools], tools=[search_news])`, `await agent.run(...)` |
 
 **Next:** `day2/examples/m8_example.py`, then the exercise `day2/exercises/m8_exercise.py`. In Module 9 the scheduler
 from Day 1 wakes this agent up.

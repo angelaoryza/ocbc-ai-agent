@@ -18,15 +18,15 @@ One agent question uses several model calls: run each cell **once**.
 In Module 6 you ran the round trip by hand, once: the LLM asked for one tool, your code ran it, the LLM answered.
 Real RM questions need more than one step: *"Which bank has the best ROE, and how did it trade last week?"* needs the
 ranking **first**, and only then the prices of the winner. An **agent** repeats **plan → act → observe** until it can
-answer, and `create_agent` runs that loop for us:
+answer, and Pydantic AI's `Agent` runs that loop for us:
 
-- **7.1 The agent.** Model, tools and rules in one call to `create_agent`.
-- **7.2 Inside the loop.** Reading every step in `result["messages"]`.
+- **7.1 The agent.** Model, tools and rules in one `Agent`.
+- **7.2 Inside the loop.** Reading every step in `result.all_messages()`.
 - **7.3 The rules.** The system prompt, and checking answers against tool results.
-- **7.4 Structured answers.** `response_format`.
+- **7.4 Structured answers.** `output_type`.
 - **7.5 Ready-made tools.** Web search, Gmail and image generation, as in `learning-agent/`.
 - **7.6 Approval before actions.** Pause, review, approve, edit or reject.
-- **7.7 Memory and limits.** Threads, and what keeps an agent safe.
+- **7.7 Memory and limits.** Message history, and what keeps an agent safe.
 
 | Step on the ladder | Who decides WHICH data | Who decides WHEN |
 |---|---|---|
@@ -36,13 +36,14 @@ answer, and `create_agent` runs that loop for us:
 
 ### Training objectives
 
-- Build an agent with `create_agent` from a model, tools and a system prompt
+- Build an agent with Pydantic AI's `Agent` from a model, tools and a system prompt
 - Read the plan, act and observe steps of a run, and check an answer against the tool results
 - Write system-prompt rules and see them change the agent's behaviour
-- Get a structured answer with `response_format`
-- Add ready-made LangChain tools (web search, Gmail) and wrap another service's API (image generation) as a tool
-- Pause an action tool for review with `HumanInTheLoopMiddleware`, and approve, edit or reject it
-- Use a checkpointer as short-term memory, and explain the limits of an agent
+- Get a structured answer with `output_type`
+- Add ready-made tools (web search, and LangChain's Gmail toolkit through Pydantic AI's adapter) and wrap another
+  service's API (image generation) as a tool
+- Pause an action tool for review with `requires_approval`, and approve, edit or reject it
+- Use the message history as short-term memory, and explain the limits of an agent
 
 
 ### Before 7.5 (after lunch)
@@ -70,31 +71,34 @@ second depends on the first.
 
 > **In this section**
 >
-> - **Key question:** What does `create_agent` need, and what does it do for us?
+> - **Key question:** What does an `Agent` need, and what does it do for us?
 > - **How we run it:** **Live, about 10 minutes.**
 > - **What you will do:** define the Module 6 tools plus one action tool, build the agent, and ask the two-step question.
 > - **What carries forward:** `tools`, `SYSTEM_PROMPT` and `agent`, used in every section below.
 
 The same Sectors tools as Module 6, plus `save_note`, an **action** tool: it writes a file, so in 7.6 it will need
-approval. `create_agent` takes the **model**, the **tools** and the **system prompt**, and runs the loop of Module 6
-as many rounds as the question needs.
+approval. `Agent` takes the **model**, the **tools** and the **system prompt** (`instructions=`), and `agent.run(...)`
+runs the loop of Module 6 as many rounds as the question needs.
 
 ```python
 import requests
 from datetime import date, timedelta
-from langchain.tools import tool
-from langchain.agents import create_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 BASE_URL = "https://api.sectors.app/v2"
 HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
-llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
+)
 
 
-@tool
 def get_company_overview(ticker: str) -> dict:
     """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
     Use it for questions about a single company, e.g. "How did NISP close?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
     """
@@ -103,10 +107,10 @@ def get_company_overview(ticker: str) -> dict:
     return response.json()
 
 
-@tool
 def get_daily_prices(ticker: str, days: int = 10) -> list:
     """Get the daily closing prices and volumes of one IDX company for the last `days` calendar days.
     Use it for questions about how a stock moved recently, e.g. "How did BMRI do this week?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BMRI.
         days: how many calendar days back to look (a week is 7).
@@ -117,10 +121,10 @@ def get_daily_prices(ticker: str, days: int = 10) -> list:
     return response.json()
 
 
-@tool
 def get_top_banks(metric: str = "market_cap", n: int = 5) -> dict:
     """Rank Indonesian listed banks by a metric, highest first.
     Use it for ranking questions such as "Which banks are the largest?" or "Which bank has the highest ROE?".
+
     Args:
         metric: one of market_cap, roe_ttm (return on equity), pe_ttm (price/earnings), pb_mrq (price/book), yield_ttm (dividend yield).
         n: how many banks to return.
@@ -130,7 +134,6 @@ def get_top_banks(metric: str = "market_cap", n: int = 5) -> dict:
     return response.json()
 
 
-@tool
 def save_note(filename: str, text: str) -> str:
     """Save a short note to a text file in the output folder. Use it only when the user asks to save something."""
     os.makedirs("output/notes", exist_ok=True)
@@ -145,18 +148,17 @@ SYSTEM_PROMPT = """You are the IDX Market Assistant for relationship managers at
 Use the tools to get data; never guess a number. Say the date of every price you quote.
 Never give buy, sell or hold advice. Only save a note when the user asks."""
 
-agent = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)
+agent = Agent(model, tools=tools, instructions=SYSTEM_PROMPT)
 
-result = agent.invoke({"messages": [{"role": "user",
-                                     "content": "Which bank has the highest return on equity, and what was its last close?"}]})
-print(result["messages"][-1].text)
+result = await agent.run("Which bank has the highest return on equity, and what was its last close?")
+print(result.output)
 ```
 
 ### Knowledge check: Who runs the tools?
 
 In that run, who sent the requests to Sectors?
 
-- **a.** Gemini, from Google's servers
+- **a.** The model, from the provider's servers
 - **b.** Our Python program: the agent runs the tools the LLM asks for
 - **c.** Sectors, after reading the prompt
 - **d.** Nobody: the LLM knew the numbers
@@ -175,25 +177,33 @@ Your manager: **"Before an RM sees an answer, I want to see how the agent got th
 >
 > - **Key question:** How do we read each plan, act and observe step of a run?
 > - **How we run it:** **Live, about 12 minutes.**
-> - **What you will do:** print every message of the run as a step, then run and read a question that needs a chain of steps.
+> - **What you will do:** print every part of the run's messages as a step, then run and read a question that needs a chain of steps.
 > - **What carries forward:** `show_steps`, used to check every run below.
 
-| Message | Step |
+`result.all_messages()` is the whole run: `ModelRequest`s sent to the model and `ModelResponse`s from it, each made
+of parts.
+
+| Part | Step |
 |---|---|
-| `AIMessage` with `tool_calls` | **plan**: the LLM decides the next tool and its arguments |
-| `ToolMessage` | **act + observe**: our code ran the tool, and this is the result the LLM reads |
-| last `AIMessage` with text | the final answer |
+| `ToolCallPart` in a `ModelResponse` | **plan**: the LLM decides the next tool and its arguments |
+| `ToolReturnPart` in a `ModelRequest` | **act + observe**: our code ran the tool, and this is the result the LLM reads |
+| `TextPart` in the last `ModelResponse` | the final answer |
 
 ```python
+from pydantic_ai.messages import UserPromptPart, ToolCallPart, ToolReturnPart, TextPart
+
+
 def show_steps(result):
-    for message in result["messages"]:
-        kind = type(message).__name__
-        if kind == "AIMessage" and message.tool_calls:
-            print("PLAN    ->", [(c["name"], c["args"]) for c in message.tool_calls])
-        elif kind == "ToolMessage":
-            print("OBSERVE ->", message.name, ":", message.content[:90], "...")
-        else:
-            print(kind.ljust(7), "->", message.text[:90])
+    for message in result.all_messages():
+        for part in message.parts:
+            if isinstance(part, UserPromptPart):
+                print("USER    ->", str(part.content)[:90])
+            elif isinstance(part, ToolCallPart):
+                print("PLAN    ->", (part.tool_name, part.args_as_dict()))
+            elif isinstance(part, ToolReturnPart):
+                print("OBSERVE ->", part.tool_name, ":", str(part.content)[:90], "...")
+            elif isinstance(part, TextPart):
+                print("ANSWER  ->", part.content[:90])
 
 
 show_steps(result)
@@ -214,10 +224,10 @@ first? The right result is a `get_top_banks` call with `yield_ttm`, then `get_da
 
 In the dividend question, why could the agent not ask for both tools in its first step?
 
-- **a.** `create_agent` allows one tool per run
+- **a.** An `Agent` allows one tool per run
 - **b.** The ticker for the price tool was only known after the ranking result came back
 - **c.** The price tool needs approval
-- **d.** Gemini can only call one tool per day
+- **d.** The model can only call one tool per day
 
 Answer this in the notebook; the check cell tells you if you are right.
 
@@ -237,14 +247,14 @@ Your manager: **"Compliance wants every answer to end with where the data came f
 > - **What carries forward:** `ask`, the helper used below.
 
 The system prompt is where the rules live: what to use, what never to do, how to answer. A rule in the prompt is a
-**request** to the model, not a guarantee, so we check: every number in the answer should appear in a `ToolMessage`.
+**request** to the model, not a guarantee, so we check: every number in the answer should appear in a `ToolReturnPart`.
 
 ```python
-def ask(agent, question, config=None):
-    result = agent.invoke({"messages": [{"role": "user", "content": question}]}, config)
-    used = [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
+async def ask(agent, question):
+    result = await agent.run(question)
+    used = [p.tool_name for m in result.all_messages() for p in m.parts if isinstance(p, ToolCallPart)]
     print("Tools used:", used)
-    print(result["messages"][-1].text)
+    print(result.output)
     return result
 ```
 
@@ -252,7 +262,7 @@ def ask(agent, question, config=None):
 
 Write `COMPLIANCE_PROMPT`: the `SYSTEM_PROMPT` plus a rule that every answer ends with a line
 `Source: Sectors, data as of <date>` and that numbers are given in IDR with thousands separators. Build `compliance_agent`
-with it, ask *"How did NISP close on its last trading day?"*, and print the close found in the `ToolMessage` next to the
+with it, ask *"How did NISP close on its last trading day?"*, and print the close found in the `ToolReturnPart` next to the
 answer. The right result ends with `Source: Sectors, data as of 2026-…`, and the close in the answer is the
 `last_close_price` in the tool result.
 
@@ -265,7 +275,7 @@ answer. The right result ends with `Source: Sectors, data as of 2026-…`, and t
 An answer says *"BBCA closed at IDR 5,100"*. How do you check it?
 
 - **a.** Ask the agent again
-- **b.** Look for the number in the run's `ToolMessage`s; if it is not there, the model made it up
+- **b.** Look for the number in the run's `ToolReturnPart`s; if it is not there, the model made it up
 - **c.** Trust it: the system prompt forbids guessing
 - **d.** Compare it with yesterday's digest
 
@@ -283,8 +293,8 @@ Your manager: **"Module 9 will pass the agent's answer to code. Give it fields, 
 >
 > - **Key question:** How do we get an agent's answer as an object?
 > - **How we run it:** **Live, about 6 minutes, then your own schema.**
-> - **What you will do:** pass a Pydantic model as `response_format` and read `result['structured_response']`.
-> - **What carries forward:** the `response_format` pattern used in Module 9.
+> - **What you will do:** pass a Pydantic model as `output_type` and read `result.output`.
+> - **What carries forward:** the `output_type` pattern used in Module 9.
 
 ```python
 from pydantic import BaseModel, Field
@@ -295,15 +305,15 @@ class BankAnswer(BaseModel):
     close_date: str
     summary: str = Field(description="One factual sentence, no advice")
 
-structured_agent = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT, response_format=BankAnswer)
-structured = structured_agent.invoke({"messages": [{"role": "user", "content": "How did NISP close on its last trading day?"}]})
-structured["structured_response"]
+structured_agent = Agent(model, tools=tools, instructions=SYSTEM_PROMPT, output_type=BankAnswer)
+structured = await structured_agent.run("How did NISP close on its last trading day?")
+structured.output
 ```
 
 ### Your turn: A ranking schema
 
 Design `RankedBank` (`ticker`, `value` as float) and `RankingAnswer` (`metric`, `banks` as a list of `RankedBank`).
-Build an agent with `response_format=RankingAnswer` and ask *"Which three banks have the highest dividend yield?"* Print each
+Build an agent with `output_type=RankingAnswer` and ask *"Which three banks have the highest dividend yield?"* Print each
 bank and value. The right result is `metric` about dividend yield and 3 banks with their yields, the same banks as in
 the `get_top_banks` result.
 
@@ -324,29 +334,31 @@ their inbox. Do we write all of that ourselves?"**
 
 > **In this section**
 >
-> - **Key question:** Which tools can we take ready-made, and how do we add a service that has no LangChain tool?
+> - **Key question:** Which tools can we take ready-made, and how do we add a service that has no ready-made tool?
 > - **How we run it:** **Live, about 8 minutes, then your own illustration.**
-> - **What you will do:** load a web search tool and the Gmail toolkit, wrap an image API in `@tool`, and give them all to one agent.
-> - **What carries forward:** `web_search`, `generate_image`, `gmail_tools` and `DESK_PROMPT`, used in 7.6.
+> - **What you will do:** load a web search tool and the Gmail toolkit, wrap an image API in a plain function, and give them all to one agent.
+> - **What carries forward:** `web_search`, `generate_image`, `gmail` and `DESK_PROMPT`, used in 7.6.
 
-LangChain ships **ready-made tools** for common services: `langchain_community` has web search, and
-`langchain_google_community` has a **toolkit** for Gmail (several tools from one sign-in). A ready-made tool is the same
-thing as ours: a name, a description the LLM reads, and arguments. Print them before you trust them. (The import
-prints a `DeprecationWarning`: `langchain_community` is being split into smaller packages; the tool still works.)
+Pydantic AI ships a few **ready-made tools** for common services, such as DuckDuckGo web search. It has no Gmail tools
+of its own, but LangChain's `langchain_google_community` has a **toolkit** for Gmail (several tools from one sign-in),
+and Pydantic AI's LangChain adapter lets an agent use any ready-made LangChain tool. A ready-made tool is the same
+thing as ours: a name, a description the LLM reads, and arguments. Print them before you trust them.
 
 ```python
-from langchain_community.tools import DuckDuckGoSearchRun
+from pydantic_ai.common_tools.duckduckgo import duckduckgo_search_tool
 
-web_search = DuckDuckGoSearchRun()
+web_search = duckduckgo_search_tool()
 print(web_search.name, "|", web_search.description)
 ```
 
 For Gmail, `GmailToolkit()` signs in with `credentials.json` (the first run opens a browser and saves `token.json`) and
 returns five tools. The agent needs only two of them: a draft, and sending. Fewer tools means fewer wrong choices, and
-no access to mail it does not need, the same idea as `SELECTED` in Module 8.
+no access to mail it does not need, the same idea as `SELECTED` in Module 8. `LangChainToolset` turns the two
+LangChain tools into tools our agent can use.
 
 ```python
 from langchain_google_community import GmailToolkit
+from pydantic_ai.ext.langchain import LangChainToolset
 
 if os.path.exists("credentials.json"):
     all_gmail = GmailToolkit().get_tools()
@@ -356,19 +368,22 @@ else:
     gmail_tools = []
     print("No credentials.json in the project folder: the Gmail tools are skipped.")
 print("We keep:", [t.name for t in gmail_tools])
+
+gmail = LangChainToolset(gmail_tools)   # the LangChain tools, ready for our agent
 ```
 
-When a service has a Python package but no LangChain tool, wrap it in `@tool` yourself, exactly like the Sectors tools.
+When a service has a Python package but no ready-made tool, wrap it in a plain function yourself, exactly like the
+Sectors tools.
 This is the image tool from `learning-agent/`, which calls Magic Hour, saves the picture, and tells the agent where:
 
 ```python
 from magic_hour import Client
 
 
-@tool
 def generate_image(prompt: str, aspect_ratio: str = "16:9") -> str:
     """Generate an illustration from a text description and save it in output/images.
     Use it only when the user asks for an image, an illustration or a picture.
+
     Args:
         prompt: what the picture shows and its style, e.g. "a calm illustration of rising bar charts over Jakarta, no text".
         aspect_ratio: "16:9", "1:1" or "9:16".
@@ -389,11 +404,10 @@ Use web search only for news, and name the website of every fact you take from i
 Create images, drafts or e-mails only when the user asks. To e-mail someone, use send_gmail_message;
 create a draft only when the user asks for a draft."""
 
-desk_tools = tools + [web_search, generate_image] + gmail_tools
-desk_agent = create_agent(model=llm, tools=desk_tools, system_prompt=DESK_PROMPT)
+desk_tools = tools + [web_search, generate_image]
+desk_agent = Agent(model, tools=desk_tools, toolsets=[gmail], instructions=DESK_PROMPT)
 
-news = desk_agent.invoke({"messages": [{"role": "user",
-                                        "content": "What does the web say about Bank OCBC NISP recently? Two sentences, with the websites."}]})
+news = await desk_agent.run("What does the web say about Bank OCBC NISP recently? Two sentences, with the websites.")
 show_steps(news)
 ```
 
@@ -414,7 +428,7 @@ professional, no text, 16:9"*. Show the steps, then display the newest file in `
 
 - **a.** The other tools cost money
 - **b.** It needs only those: fewer tools means fewer wrong choices and no access to mail it does not need
-- **c.** Gemini accepts at most two tools from one toolkit
+- **c.** The model accepts at most two tools from one toolkit
 - **d.** The other tools need a different `credentials.json`
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -446,41 +460,43 @@ Your manager: **"Reading data is fine. But nothing gets written or sent unless a
 then review an e-mail and edit it before it goes.
 > - **What carries forward:** the approval pattern used in the exercise and in Module 9.
 
-- `HumanInTheLoopMiddleware(interrupt_on={...})` **pauses** the run before the tools you list: here the two actions,
-  `save_note` and `send_gmail_message`. Reading data, searching and drafting run without a stop.
-- A **checkpointer** (`InMemorySaver`) keeps the paused run, by its `thread_id`.
-- The paused result has `__interrupt__`: the action the agent wants, with its arguments.
-- We resume with `Command(resume={"decisions": [...]})`: `approve`, `reject` with a message the agent reads, or
-  `edit` with a changed action.
+- `Tool(save_note, requires_approval=True)` and `gmail.approval_required(...)` **pause** the run before the tools you
+  mark: here the two actions, `save_note` and `send_gmail_message`. Reading data, searching and drafting run without a stop.
+- With `output_type=[str, DeferredToolRequests]`, a paused run stops and returns, instead of an answer, a
+  `DeferredToolRequests`: its `.approvals` are the actions the agent wants, with their arguments.
+- We resume by running again with the message history and our decisions, `DeferredToolResults(approvals={...})`:
+  `True` to approve, `ToolDenied("...")` to reject with a message the agent reads, or
+  `ToolApproved(override_args={...})` to approve a changed action.
 
 ```python
-from langchain.agents.middleware import HumanInTheLoopMiddleware
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.types import Command
+from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults, ToolDenied, ToolApproved
 
-agent = create_agent(
-    model=llm, tools=desk_tools, system_prompt=DESK_PROMPT,
-    middleware=[HumanInTheLoopMiddleware(interrupt_on={"save_note": True, "send_gmail_message": True})],
-    checkpointer=InMemorySaver(),
+approval_tools = [get_company_overview, get_daily_prices, get_top_banks, Tool(save_note, requires_approval=True),
+                  web_search, generate_image]
+agent = Agent(
+    model, tools=approval_tools, instructions=DESK_PROMPT,
+    toolsets=[gmail.approval_required(lambda ctx, tool_def, args: tool_def.name == "send_gmail_message")],
+    output_type=[str, DeferredToolRequests],
 )
 
-config = {"configurable": {"thread_id": "rm-desk-1"}}
-paused = agent.invoke({"messages": [{"role": "user", "content": "Get BBCA's last close, then save it in a note called bbca.txt"}]}, config)
+paused = await agent.run("Get BBCA's last close, then save it in a note called bbca.txt")
 
-action = paused["__interrupt__"][0].value["action_requests"][0]
-print("The agent wants to run:", action["name"], action["args"])
+call = paused.output.approvals[0]
+print("The agent wants to run:", call.tool_name, call.args_as_dict())
 
-result = agent.invoke(Command(resume={"decisions": [{"type": "reject", "message": "Do not save yet, I want to check it first."}]}), config)
-print(result["messages"][-1].text)
+decision = ToolDenied("Do not save yet, I want to check it first.")
+result = await agent.run(message_history=paused.all_messages(),
+                         deferred_tool_results=DeferredToolResults(approvals={call.tool_call_id: decision}))
+print(result.output)
 print("File exists:", os.path.exists("output/notes/bbca.txt"))
 ```
 
 ### Your turn: Review the e-mail before it goes
 
-In a new thread `"rm-desk-2"`, ask *"E-mail &lt;your MY_EMAIL&gt; BBCA's last close with its date, in two sentences."*
+In a new conversation (a run with no message history), ask *"E-mail &lt;your MY_EMAIL&gt; BBCA's last close with its date, in two sentences."*
 (use `os.getenv("MY_EMAIL")`). The agent gets the price, then pauses before `send_gmail_message`: print the recipient,
-subject and message it wants to send. Do not approve it as it is: resume with an `edit` decision that keeps everything but
-sets the subject to `IDX Market Assistant: BBCA` (`{"type": "edit", "edited_action": {"name": ..., "args": {...}}}`).
+subject and message it wants to send. Do not approve it as it is: resume with a `ToolApproved(override_args={...})` decision that keeps every argument but
+sets the subject to `IDX Market Assistant: BBCA`.
 The right result: the final answer says the e-mail was sent, and it is in your inbox with your subject and BBCA's close.
 
 No Gmail on your laptop? Do the same with `save_note`: ask for a note called `nisp.txt` that says `NISP checked`, and edit
@@ -492,7 +508,8 @@ the file name to `nisp_reviewed.txt` before it is saved.
 
 ### Knowledge check: Which tools pause?
 
-With `interrupt_on={"save_note": True, "send_gmail_message": True}`, which tool calls wait for a person?
+With `Tool(save_note, requires_approval=True)`, and `approval_required` true only for `send_gmail_message`, which tool
+calls wait for a person?
 
 - **a.** All tool calls
 - **b.** Only `save_note` and `send_gmail_message`
@@ -513,24 +530,24 @@ An RM, a minute later: **"And which bank did I just ask about?"**
 >
 > - **Key question:** What does an agent remember, and what keeps it safe?
 > - **How we run it:** **Live, about 5 minutes.**
-> - **What you will do:** ask a follow-up in the same thread, and review the limits.
+> - **What you will do:** ask a follow-up with the message history, and review the limits.
 > - **What carries forward:** the safety table you apply to Module 9's scheduled agent.
 
 ```python
-result = agent.invoke({"messages": [{"role": "user", "content": "Which bank did I just ask about?"}]}, config)
-print(result["messages"][-1].text)
+result = await agent.run("Which bank did I just ask about?", message_history=result.all_messages())
+print(result.output)
 ```
 
-The same `thread_id` gives the agent the earlier messages: that is its **short-term memory**. A new `thread_id` starts
-empty. `InMemorySaver` keeps threads only while the program runs.
+`message_history=` gives the agent the earlier messages: that is its **short-term memory**. A run without it starts
+empty. The history is only a Python variable: it lasts only while the program runs.
 
 | Risk | Control |
 |---|---|
-| A made-up number | Rule in the system prompt; check against the `ToolMessage`s (7.3) |
+| A made-up number | Rule in the system prompt; check against the `ToolReturnPart`s (7.3) |
 | An action nobody wanted | Approval for action tools (7.6); read and action tools kept apart |
 | An e-mail to the wrong person | Approval on send; a person reads the recipient and the text; drafts need no approval |
 | Facts from the web | Web search for news only, with the website named; numbers from Sectors |
-| Too many steps, too much cost | Few tools with clear descriptions; `recursion_limit` in the config |
+| Too many steps, too much cost | Few tools with clear descriptions; `usage_limits=UsageLimits(request_limit=...)` on the run |
 | Advice | Forbidden in the system prompt; read the text before it is sent |
 
 ### Knowledge check: A restart
@@ -539,7 +556,7 @@ The agent is paused for approval and you restart the kernel before answering. Wh
 
 - **a.** It continues by itself
 - **b.** The note is saved anyway
-- **c.** It is lost: `InMemorySaver` keeps it only in memory
+- **c.** It is lost: the message history was only a variable in memory
 - **d.** It is written to `.env`
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -559,12 +576,12 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 | Idea | In code |
 |---|---|
-| The loop | `create_agent(model, tools, system_prompt)`; read it with `result["messages"]` |
-| The rules | the system prompt; check numbers against `ToolMessage`s |
-| Ready-made tools | `DuckDuckGoSearchRun`, `GmailToolkit().get_tools()`; any API wrapped in `@tool` |
-| Fields for code | `response_format=` → `result["structured_response"]` |
-| Approval | `HumanInTheLoopMiddleware` + checkpointer; `Command(resume={"decisions": [...]})` |
-| Memory | same `thread_id` |
+| The loop | `Agent(model, tools=..., instructions=...)`; read it with `result.all_messages()` |
+| The rules | the system prompt; check numbers against `ToolReturnPart`s |
+| Ready-made tools | `duckduckgo_search_tool()`, `GmailToolkit().get_tools()` in `LangChainToolset`; any API wrapped in a plain function |
+| Fields for code | `output_type=` → `result.output` |
+| Approval | `requires_approval=True` + `output_type=[str, DeferredToolRequests]`; `DeferredToolResults(approvals={...})` |
+| Memory | `message_history=result.all_messages()` |
 
 **Next:** `day2/examples/m7_example.py` (approve one save, reject one), then exercise part 2. In Module 8 the agent gets
 tools from Sectors' MCP server instead of our own functions.

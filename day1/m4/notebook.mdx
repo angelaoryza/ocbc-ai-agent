@@ -1,6 +1,6 @@
 ---
 title: "Module 4 notebook: the first LLM call"
-description: "Call Gemini from Python, put the report in the prompt, use templates and get structured output."
+description: "Call the OpenAI model from Python, put the report in the prompt, use templates and get structured output."
 sidebarTitle: "Notebook walkthrough"
 icon: "notebook"
 ---
@@ -12,7 +12,7 @@ This page follows the notebook cell by cell, without outputs. The notebook's fir
 This notebook is the hands-on part of Module 4 (about 31 minutes). After it come the example script
 `day1/examples/m4_example.py` and the exercise `day1/exercises/m4_exercise.py`. Run it from the top.
 
-Every LLM call uses quota. Run each LLM cell **once**; if you hit a quota error, change `GEMINI_MODEL` in `.env`.
+Every LLM call uses quota. Run each LLM cell **once**; if you hit a quota error, change `OPENAI_MODEL` in `.env`.
 
 ## Background
 
@@ -32,10 +32,10 @@ Your manager wants the LLM to write that digest, but **only from our report**:
 
 ### Training objectives
 
-- Send system and human messages to Gemini through LangChain and read the reply and its token use
+- Send rules and a prompt to an OpenAI model through Pydantic AI and read the reply and its token use
 - Explain why the model must get every fact in the prompt, and keep a conversation yourself
 - Put a report in the prompt so the model answers from it, and write rules that stop invented numbers
-- Turn a prompt into a reusable `ChatPromptTemplate` and chain it to the model
+- Turn a prompt into a reusable template with blanks and send it to the model
 - Get structured output as a Pydantic object, and design your own schema
 
 ### The report
@@ -56,36 +56,38 @@ Your manager: **"Before we hand the model our report, show me what a call actual
 >
 > - **Key question:** What goes into one call, and what comes back?
 > - **How we run it:** **Live, about 5 minutes.**
-> - **What you will do:** create the chat model, send a system and a human message, and read the reply.
-> - **What carries forward:** `llm`, used in every section below.
+> - **What you will do:** create the model and an agent, send the rules and a prompt, and read the reply.
+> - **What carries forward:** `model`, used in every section below.
 
-A call sends a list of **messages** and gets one message back. The **system** message holds the rules, the
-**human** message holds the task and the data, and the reply is an **AI** message. `ChatGoogleGenerativeAI` is
-the same model setup as in `learning-agent/`; the key comes from `.env`.
+A call sends a list of **messages** and gets one message back. In Pydantic AI an **`Agent`** wraps the model:
+its **`instructions`** hold the rules (the *system* message), the prompt we pass to `run` holds the task and the data
+(the *user* message), and the reply comes back in **`result.output`**. `result.all_messages()` shows what was sent
+and received. The key and the endpoint come from `.env`.
+
+In a notebook we `await agent.run(...)`; in a .py script the same call is `agent.run_sync(...)`.
 
 ```python
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
-llm = ChatGoogleGenerativeAI(
-    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
-    api_key=os.getenv("GEMINI_API_KEY"),
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
 )
 
-messages = [
-    ("system", "You answer questions about Indonesian bank stocks in one sentence. Never give buy or sell advice."),
-    ("human", "What kind of company is PT Bank OCBC NISP Tbk?"),
-]
-response = llm.invoke(messages)
-print(type(response).__name__)
-print(response.text)
+agent = Agent(model, instructions="You answer questions about Indonesian bank stocks in one sentence. Never give buy or sell advice.")
+result = await agent.run("What kind of company is PT Bank OCBC NISP Tbk?")
+print(type(result).__name__)
+print(result.output)
 ```
 
 ### Knowledge check: Where do the rules go?
 
 The digest must never contain buy or sell advice, for every RM and every morning. Where does that rule belong?
 
-- **a.** In the human message, after the report
-- **b.** In the system message
+- **a.** In the prompt, after the report
+- **b.** In the agent's `instructions` (the system message)
 - **c.** In the model name
 - **d.** In `.env`
 
@@ -106,23 +108,24 @@ Your manager: **"What does a call cost, and can the RM ask a follow-up question?
 > - **What you will do:** read the text and the token use, see that a second call remembers nothing, and pass the history yourself.
 > - **What carries forward:** the habit of sending everything the model needs in every call.
 
-Read the reply with **`response.text`** (with Gemini 3, `response.content` is a list of blocks).
-`response.usage_metadata` shows the **tokens**, which is what you pay for. Then a second, separate call:
+Read the reply with **`result.output`**. `result.usage` shows the **tokens**, which is what you pay for.
+Then a second, separate call:
 
 ```python
-print("Tokens:", response.usage_metadata)
+print("Tokens:", result.usage)
 
-follow_up = llm.invoke([("human", "What is its ticker on the Indonesia Stock Exchange?")])
-print(follow_up.text)
+follow_up = await agent.run("What is its ticker on the Indonesia Stock Exchange?")
+print(follow_up.output)
 ```
 
 The model has no idea what "its" means: every call is **stateless**. A chat app "remembers" because it sends
-the earlier messages again, with the model's own answer as an `("ai", ...)` message.
+the earlier messages again, with the model's own answers. `result.all_messages()` is that list, and
+`message_history=` sends it again.
 
 ### Your turn: Keep the conversation yourself
 
-Send the follow-up question again, but this time with the history: the two messages from 4.1, the model's
-answer (`("ai", response.text)`), then the follow-up as a human message. Print the reply and the total tokens. The right
+Send the follow-up question again, but this time with the history: `message_history=result.all_messages()` (the
+4.1 messages and the model's answer). Print the reply and the total tokens (`.usage.total_tokens`). The right
 result names the ticker `NISP`, and uses more tokens than the first call, because the history is sent again.
 
 ```python
@@ -136,8 +139,8 @@ the digest?" without sending anything else. What happens?
 
 - **a.** The model answers from the 07:30 digest
 - **b.** The model cannot know: it gets no digest in the second call
-- **c.** LangChain sends the digest automatically
-- **d.** Gemini caches the digest for an hour
+- **c.** Pydantic AI sends the digest automatically
+- **d.** The model provider caches the digest for an hour
 
 Answer this in the notebook; the check cell tells you if you are right.
 
@@ -154,15 +157,15 @@ Your manager: **"The digest must use our numbers, not whatever the model thinks 
 > - **Key question:** How do we make the model answer from our data, and only from it?
 > - **How we run it:** **Live, about 7 minutes.**
 > - **What you will do:** ask without data, then with the report between tags and strict rules; then write a prompt of your own.
-> - **What carries forward:** `SYSTEM_PROMPT` and the `<report>` pattern, used in the example and the exercise.
+> - **What carries forward:** `SYSTEM_PROMPT`, `digest_agent` and the `<report>` pattern, used in the example and the exercise.
 
 ```python
-no_data = llm.invoke([("human", "How did BBCA close on 23 October 2026? Give the price.")])
-print(no_data.text)
+no_data = await Agent(model).run("How did BBCA close on 23 October 2026? Give the price.")
+print(no_data.output)
 ```
 
 Without data the model either refuses or, worse, gives a number that looks right. With the report **between
-tags**, the data is clearly separated from our instructions, and the rules say to use nothing else:
+tags**, the data is clearly separated from our instructions, and the rules (the instructions of `digest_agent`) say to use nothing else:
 
 ```python
 SYSTEM_PROMPT = """You write a short morning digest of Indonesian bank stocks for relationship managers.
@@ -175,15 +178,16 @@ human_prompt = f"""<report>
 
 Write the digest: one headline sentence, then one short sentence per bank."""
 
-digest = llm.invoke([("system", SYSTEM_PROMPT), ("human", human_prompt)])
-print(digest.text)
+digest_agent = Agent(model, instructions=SYSTEM_PROMPT)
+digest = await digest_agent.run(human_prompt)
+print(digest.output)
 ```
 
 ### Your turn: A one-bank brief
 
 An RM covering BBCA wants **two sentences about BBCA only**: the last close with its date, and the 1-day and 10-day
-change. Write the human prompt (the report between `<report>` tags, then the task), call the model with `SYSTEM_PROMPT`,
-and print the reply. The right result quotes `5,025` on `2026-10-23`, `-2.90%` and `-15.55%`, and gives no advice.
+change. Write the prompt (the report between `<report>` tags, then the task), run it with `digest_agent` (the rules in
+`SYSTEM_PROMPT`), and print the reply. The right result quotes `5,025` on `2026-10-23`, `-2.90%` and `-15.55%`, and gives no advice.
 
 ```python
 ## Your code below
@@ -193,7 +197,7 @@ and print the reply. The right result quotes `5,025` on `2026-10-23`, `-2.90%` a
 
 Why do we put the report between `<report>` and `</report>`?
 
-- **a.** Gemini only reads XML
+- **a.** The model only reads XML
 - **b.** It separates our data from our instructions, so the model knows what is data
 - **c.** It makes the call cheaper
 - **d.** It hides the data from the model
@@ -225,40 +229,33 @@ f-strings: make the prompt one thing we can reuse."**
 >
 > - **Key question:** How do we write a prompt once and fill it in for any report or bank?
 > - **How we run it:** **Live, about 6 minutes.**
-> - **What you will do:** turn the 4.3 prompt into a `ChatPromptTemplate`, see the messages it makes, and chain it to the model with `|`.
-> - **What carries forward:** `digest_prompt` and the `prompt | llm` chain, used in 4.5, the example and Module 9.
+> - **What you will do:** turn the 4.3 prompt into a template, see the prompt it makes, and send it to `digest_agent`.
+> - **What carries forward:** `DIGEST_TEMPLATE` and `digest_agent`, used in 4.5, the example and Module 9.
 
-A **prompt template** is the prompt with **blanks** in `{curly braces}`. `ChatPromptTemplate.from_messages` takes the
-same `(role, text)` pairs as before; `invoke` with a dict fills the blanks and returns the messages. No model call yet:
+A **prompt template** is the prompt with **blanks** in `{curly braces}`. In Python it is just a string: `.format(...)`
+fills the blanks and returns the prompt. The rules stay in the instructions of `digest_agent`. No model call yet:
 
 ```python
-from langchain_core.prompts import ChatPromptTemplate
+DIGEST_TEMPLATE = "<report>\n{report}\n</report>\n\n{task}"
 
-digest_prompt = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    ("human", "<report>\n{report}\n</report>\n\n{task}"),
-])
-print("Blanks:", digest_prompt.input_variables)
-
-filled = digest_prompt.invoke({"report": report, "task": "Write the digest: one headline sentence, then one short sentence per bank."})
-for message in filled.to_messages():
-    print(type(message).__name__, "->", message.content[:80].replace("\n", " "), "...")
+filled = DIGEST_TEMPLATE.format(report=report, task="Write the digest: one headline sentence, then one short sentence per bank.")
+print(filled)
 ```
 
-`prompt | llm` makes a **chain**: the filled messages go straight into the model. The same chain works for any report
-and any task, and `chain.batch([...])` runs it for several inputs at once. A `("placeholder", "{history}")` message
-would also let you pass the 4.2 conversation into a template.
+To call the model, we pass the filled template to `digest_agent.run(...)`. The same template works for any report
+and any task, and `asyncio.gather(...)` runs several calls at once. `message_history=` passes the 4.2 conversation
+along with any filled template.
 
 ```python
-digest_chain = digest_prompt | llm
-print(digest_chain.invoke({"report": report, "task": "In one sentence: which bank fell most over 10 days?"}).text)
+reply = await digest_agent.run(DIGEST_TEMPLATE.format(report=report, task="In one sentence: which bank fell most over 10 days?"))
+print(reply.output)
 ```
 
 ### Your turn: A brief for any bank
 
-Write `brief_prompt`, a template with **two** blanks, `{report}` and `{ticker}`: the `SYSTEM_PROMPT`, then the report
-between tags and the task *"In two sentences about \{ticker\} only: its last close with the date, then its 1-day and 10-day
-change."* Chain it to `llm` and run it for NISP and BMRI with one `batch` call. The right result: NISP `1,185` on
+Write `BRIEF_TEMPLATE`, a template with **two** blanks, `{report}` and `{ticker}`: the report between tags and the task
+*"In two sentences about \{ticker\} only: its last close with the date, then its 1-day and 10-day change."* Fill it for
+NISP and BMRI and run both with `digest_agent` in one `asyncio.gather` call. The right result: NISP `1,185` on
 `2026-10-23`, `+0.42%`, `-4.05%`; BMRI `3,900`, `+1.30%`, `-2.74%`.
 
 ```python
@@ -278,12 +275,12 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 ### Knowledge check: A curly brace too many
 
-You add an example to the system message of a template: `Answer like {"ticker": "BBCA"}`. Now `invoke` fails with a
-missing-variable error. Why?
+You add an example to a template: `Answer like {"ticker": "BBCA"}`. Now `.format(...)` fails with a `KeyError`.
+Why?
 
-- **a.** Gemini does not accept JSON
+- **a.** The model does not accept JSON
 - **b.** In a template, `{...}` is a blank to fill; write `{{` and `}}` for a literal brace
-- **c.** System messages cannot contain examples
+- **c.** A template cannot contain examples
 - **d.** The report is too long
 
 Answer this in the notebook; the check cell tells you if you are right.
@@ -300,12 +297,13 @@ Your manager: **"Module 9 will raise an alert when a bank moves a lot. Code cann
 >
 > - **Key question:** How do we get fields we can trust from the model?
 > - **How we run it:** **Live, about 8 minutes.**
-> - **What you will do:** describe the fields with Pydantic, call `with_structured_output`, then design a schema of your own.
+> - **What you will do:** describe the fields with Pydantic, pass it as `output_type`, then design a schema of your own.
 > - **What carries forward:** the `BankDigest` pattern used in the exercise, and the idea of an alert used on Day 2.
 
-A **Pydantic** model describes the fields and their types. `llm.with_structured_output(Model)` returns a Python
-object of that class, checked on the way in: a value outside a `Literal` raises an error instead of reaching your code.
-`Field(description=...)` tells the model what a field means. It chains to a template like `llm` does.
+A **Pydantic** model describes the fields and their types. `agent.run(prompt, output_type=Model)` puts a Python
+object of that class in `result.output`, checked on the way in: a value outside a `Literal` raises an error instead of
+reaching your code (Pydantic AI sends the error back to the model and asks again). `Field(description=...)` tells the
+model what a field means. The prompt can be a filled template like any other.
 
 ```python
 from typing import Literal
@@ -321,18 +319,18 @@ class MorningDigest(BaseModel):
     headline: str
     banks: list[BankDigest]
 
-structured_chain = digest_prompt | llm.with_structured_output(MorningDigest)
-result = structured_chain.invoke({"report": report, "task": "Write the digest: one headline sentence, then one short sentence per bank."})
-for bank in result.banks:
+prompt = DIGEST_TEMPLATE.format(report=report, task="Write the digest: one headline sentence, then one short sentence per bank.")
+result = await digest_agent.run(prompt, output_type=MorningDigest)
+for bank in result.output.banks:
     print(bank.ticker, bank.last_close, bank.trend, "|", bank.summary)
-result.model_dump()["banks"][0]
+result.output.model_dump()["banks"][0]
 ```
 
 ### Your turn: Design an alert
 
 Design a schema for alerts: `Alert` with `ticker` (str), `direction` (only `"up"` or `"down"`), `change_pct` (float,
 the 1-day change in percent) and `reason` (str, one sentence from the report), and `Alerts` with a list `alerts`. Ask the
-model for an alert for every bank whose **1-day** change is larger than 2% in either direction, through `digest_prompt`
+model for an alert for every bank whose **1-day** change is larger than 2% in either direction, through `DIGEST_TEMPLATE`
 with your own task. The right result is one
 alert: `BBCA`, `down`, about `-2.9`.
 
@@ -342,7 +340,7 @@ alert: `BBCA`, `down`, about `-2.9`.
 
 ### Knowledge check: What guarantees the values?
 
-`with_structured_output(MorningDigest)` returns `trend="up"`. What guarantees that `trend` can only be up, down or flat?
+`output_type=MorningDigest` returns `trend="up"`. What guarantees that `trend` can only be up, down or flat?
 
 - **a.** The system prompt
 - **b.** The `Literal[...]` type in the Pydantic model, checked when the object is built
@@ -367,10 +365,10 @@ Answer this in the notebook; the check cell tells you if you are right.
 | Question | Answer in this module |
 |---|---|
 | What does the model know? | Only what is in the messages of this call |
-| Where are the rules? | The system message |
-| Where is the data? | Between `<report>` tags in the human message |
-| How do we reuse a prompt? | `ChatPromptTemplate` with `{blanks}`, chained with `prompt \| llm` |
-| How does code use the answer? | `with_structured_output` + Pydantic |
+| Where are the rules? | The agent's `instructions` (the system message) |
+| Where is the data? | Between `<report>` tags in the prompt |
+| How do we reuse a prompt? | A template string with `{blanks}`, filled with `.format(...)` |
+| How does code use the answer? | `output_type=` + Pydantic |
 | Who chose the data? | **Our code** (the Module 3 report) |
 
 **Next:** `day1/examples/m4_example.py` (it reads today's Module 3 report through a template), then the exercise

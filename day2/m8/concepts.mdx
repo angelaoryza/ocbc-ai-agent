@@ -33,7 +33,7 @@ Without a standard, every application needs custom code for every data provider:
 | **Host** | Our Python program | Runs the agent and owns the conversation |
 | **Client** | A component inside our program | Opens the connection, lists the tools, sends the calls |
 | **Server** | Run by Sectors | Offers the tools and runs them on its side |
-| **Model** | Gemini | Reads the descriptions and **requests** calls |
+| **Model** | An OpenAI model | Reads the descriptions and **requests** calls |
 
 **The client is our code, not the model.** The model never connects to the server and never sees the key. It requests an MCP tool exactly as it requested a local one; our program passes the request on. Everything said in Module 6 about control still holds: every call passes through our code.
 

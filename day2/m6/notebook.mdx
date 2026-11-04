@@ -21,7 +21,7 @@ The RMs now want to ask anything: *"How did NISP close?"*, *"Which bank has the 
 You cannot write a script for every question. Instead, you give the LLM **tools** (your Day 1 functions with a
 description) and let it ask for the one a question needs:
 
-- **6.1 From function to tool.** What `@tool` turns a function into.
+- **6.1 From function to tool.** What the LLM sees of a plain Python function.
 - **6.2 How tool calling works.** The LLM asks; our code runs. One round trip by hand.
 - **6.3 The description decides.** Why the docstring is the most important line.
 - **6.4 The news search becomes a tool.** Module 5's retriever as `search_news`.
@@ -36,7 +36,7 @@ description) and let it ask for the one a question needs:
 
 ### Training objectives
 
-- Turn a Sectors function into a tool with `@tool`, and read what the LLM sees
+- Turn a Sectors function into a tool (a plain function with a docstring), and read what the LLM sees with `Tool(f).tool_def`
 - Run one tool call by hand: the LLM's request, our code running it, the result back to the LLM
 - Write descriptions and arguments that make the LLM choose the right tool with the right arguments
 - Turn the Module 5 retriever into a `search_news` tool
@@ -55,26 +55,27 @@ An RM: **"How did NISP close?"** You already have the function. Now the LLM must
 >
 > - **Key question:** What does the LLM see of a tool?
 > - **How we run it:** **Live, about 8 minutes.**
-> - **What you will do:** decorate two Sectors functions with `@tool`, read their name, description and arguments, then write a tool yourself.
+> - **What you will do:** write two Sectors functions as tools, read their name, description and arguments, then write a tool yourself.
 > - **What carries forward:** `get_company_overview` and `get_daily_prices`, used in every section below.
 
-`@tool` reads three things: the function **name**, the **docstring** (the description the LLM reads) and the
-**arguments with their types**. The LLM never sees the code inside. A tool is still a function: our code calls it with
-`.invoke({...})`.
+In Pydantic AI a tool is a **plain function**. It reads three things from it: the function **name**, the **docstring**
+(the description the LLM reads; the lines under `Args:`, after a blank line, describe each argument) and the
+**arguments with their types**. The LLM never sees the code inside. `Tool(f).tool_def` shows what the LLM will see.
+A tool is still a function: our code calls it as usual, `get_company_overview("NISP")`.
 
 ```python
 import requests
 from datetime import date, timedelta
-from langchain.tools import tool
+from pydantic_ai import Tool
 
 BASE_URL = "https://api.sectors.app/v2"
 HEADERS = {"Authorization": os.getenv("SECTORS_API_KEY")}
 
 
-@tool
 def get_company_overview(ticker: str) -> dict:
     """Get the profile and latest closing price of one company on the Indonesia Stock Exchange.
     Use it for questions about a single company, e.g. "How did NISP close?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BBCA, BBRI, BMRI, NISP.
     """
@@ -83,10 +84,10 @@ def get_company_overview(ticker: str) -> dict:
     return response.json()
 
 
-@tool
 def get_daily_prices(ticker: str, days: int = 10) -> list:
     """Get the daily closing prices and volumes of one IDX company for the last `days` calendar days.
     Use it for questions about how a stock moved recently, e.g. "How did BMRI do this week?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BMRI.
         days: how many calendar days back to look (a week is 7).
@@ -97,10 +98,11 @@ def get_daily_prices(ticker: str, days: int = 10) -> list:
     return response.json()
 
 
-print("Name:", get_company_overview.name)
-print("Description:", get_company_overview.description)
-print("Arguments:", get_company_overview.args)
-print(get_company_overview.invoke({"ticker": "NISP"})["overview"]["last_close_price"])
+tool_def = Tool(get_company_overview).tool_def
+print("Name:", tool_def.name)
+print("Description:", tool_def.description)
+print("Arguments:", tool_def.parameters_json_schema["properties"])
+print(get_company_overview("NISP")["overview"]["last_close_price"])
 ```
 
 ### Your turn: A ranking tool
@@ -108,8 +110,9 @@ print(get_company_overview.invoke({"ticker": "NISP"})["overview"]["last_close_pr
 Write the tool `get_top_banks(metric: str = "market_cap", n: int = 5) -> dict` that ranks the banks with the
 Sectors screener (Module 2: `/companies/`, `where` on `sub_sector='banks'`, `order_by` on `-{metric}`, `limit`,
 `include_query_values`). The docstring must say what it returns, when to use it, and list the metrics the LLM may use:
-`market_cap`, `roe_ttm` (return on equity), `pe_ttm`, `pb_mrq`, `yield_ttm`. Invoke it for `roe_ttm` with `n=3` and
-print the symbols. The right result is 3 bank symbols, and `get_top_banks.args` shows `metric` and `n`.
+`market_cap`, `roe_ttm` (return on equity), `pe_ttm`, `pb_mrq`, `yield_ttm`. Call it for `roe_ttm` with `n=3` and
+print the symbols. The right result is 3 bank symbols, and `Tool(get_top_banks).tool_def.parameters_json_schema`
+shows `metric` and `n`, each with its description.
 
 ```python
 ## Your code below
@@ -138,45 +141,56 @@ Your manager: **"Before we trust it, show me exactly who does what when the LLM 
 >
 > - **Key question:** Who runs the tool: the LLM or our code?
 > - **How we run it:** **Live, about 10 minutes.**
-> - **What you will do:** bind tools to the model, read the tool call, run it, send the result back, and get the answer; then do a round trip yourself.
-> - **What carries forward:** the round trip that `create_agent` automates in Module 7.
+> - **What you will do:** send the tool descriptions with a question, read the tool call, run it, send the result back, and get the answer; then do a round trip yourself.
+> - **What carries forward:** the round trip that a Pydantic AI `Agent` runs for us in Module 7.
 
-1. We send the question **and the tool descriptions** (`llm.bind_tools(tools)`).
+1. We send the question **and the tool descriptions** (`ModelRequestParameters(function_tools=...)`).
 2. The LLM answers with a **tool call**: a name and arguments. It runs nothing.
-3. **Our code** runs the tool and sends the result back as a `ToolMessage` with the call's `id`.
+3. **Our code** runs the tool and sends the result back as a `ToolReturnPart` with the call's `tool_call_id`.
 4. The LLM writes the answer from the result.
 
+`model_request` (from `pydantic_ai.direct`) sends one request to the model, with no agent around it, so we can see
+each step. In a notebook we `await` it; in a .py script the same call is `model_request_sync(...)`.
+
 ```python
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai.direct import model_request
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
-llm = ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"), api_key=os.getenv("GEMINI_API_KEY"))
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
+)
 
-tools = [get_company_overview, get_daily_prices]
+tools = [Tool(get_company_overview), Tool(get_daily_prices)]
 tools_by_name = {t.name: t for t in tools}
-llm_with_tools = llm.bind_tools(tools)
+params = ModelRequestParameters(function_tools=[t.tool_def for t in tools])   # the tool descriptions
 
-messages = [HumanMessage("How did NISP close on its last trading day?")]
-ai_message = llm_with_tools.invoke(messages)               # step 2: the LLM asks
-print("Text:", repr(ai_message.text))
-print("Tool calls:", ai_message.tool_calls)
+messages = [ModelRequest.user_text_prompt("How did NISP close on its last trading day?")]
+response = await model_request(model, messages, model_request_parameters=params)   # step 2: the LLM asks
+print("Text:", repr(response.text))
+print("Tool calls:", response.tool_calls)
 ```
 
 ```python
-messages.append(ai_message)
-for call in ai_message.tool_calls:                          # step 3: OUR code runs the tool
-    result = tools_by_name[call["name"]].invoke(call["args"])
-    messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+messages.append(response)
+returns = []
+for call in response.tool_calls:                            # step 3: OUR code runs the tool
+    result = tools_by_name[call.tool_name].function(**call.args_as_dict())
+    returns.append(ToolReturnPart(tool_name=call.tool_name, content=result, tool_call_id=call.tool_call_id))
+messages.append(ModelRequest(parts=returns))
 
-final = llm_with_tools.invoke(messages)                     # step 4: the LLM answers from the result
+final = await model_request(model, messages, model_request_parameters=params)   # step 4: the LLM answers from the result
 print(final.text)
 ```
 
 ### Your turn: A round trip of your own
 
 Do the four steps yourself for *"How did BMRI shares do over the past week?"*: a new message list, the LLM's tool
-call, your code running it, the `ToolMessage`, the final answer. Print the tool call and the answer. The right result is
-a call to `get_daily_prices` with `ticker` `BMRI` and `days` about 7, and an answer that quotes BMRI's closes.
+call, your code running it, the `ToolReturnPart`, the final answer. Print the tool call and the answer. The right result
+is a call to `get_daily_prices` with `ticker` `BMRI` and `days` about 7, and an answer that quotes BMRI's closes.
 
 ```python
 ## Your code below
@@ -186,10 +200,10 @@ a call to `get_daily_prices` with `ticker` `BMRI` and `days` about 7, and an ans
 
 When the LLM "uses" `get_daily_prices`, where does the request to Sectors come from?
 
-- **a.** From Google's servers, run by Gemini
+- **a.** From the model provider's servers, run by the LLM
 - **b.** From our program, which runs the tool the LLM asked for
 - **c.** From Sectors, which reads the prompt
-- **d.** From LangChain's cloud
+- **d.** From Pydantic AI's cloud
 
 Answer this in the notebook; the check cell tells you if you are right.
 
@@ -209,31 +223,32 @@ An RM: **"Which three banks have the highest return on equity?"** Will the LLM p
 > - **What carries forward:** the docstring habits for every tool in Modules 7–9.
 
 ```python
-@tool
 def tool_a(ticker: str) -> list:
     """Gets data."""
-    return get_daily_prices.invoke({"ticker": ticker, "days": 7})
+    return get_daily_prices(ticker, days=7)
 
 
-@tool
 def tool_b(ticker: str) -> list:
     """Daily closing prices of one IDX stock for the last 7 days.
     Use it for questions like "How did BMRI do this week?".
+
     Args:
         ticker: 4-letter IDX code, e.g. BMRI.
     """
-    return get_daily_prices.invoke({"ticker": ticker, "days": 7})
+    return get_daily_prices(ticker, days=7)
 
 
-choice = llm.bind_tools([tool_a, tool_b]).invoke("How did BMRI shares do over the past week?")
-print("The LLM picked:", [c["name"] for c in choice.tool_calls])
+params_ab = ModelRequestParameters(function_tools=[Tool(tool_a).tool_def, Tool(tool_b).tool_def])
+question = "How did BMRI shares do over the past week?"
+choice = await model_request(model, [ModelRequest.user_text_prompt(question)], model_request_parameters=params_ab)
+print("The LLM picked:", [c.tool_name for c in choice.tool_calls])
 ```
 
 ### Your turn: Test your description
 
-Bind `get_company_overview`, `get_daily_prices` and **your** `get_top_banks` and ask *"Which three banks have the
-highest return on equity?"* Print the tool calls. The right result is `get_top_banks` with `metric` `roe_ttm` and `n` 3.
-If the LLM picks another tool or another metric, improve your docstring and try again: that is the skill.
+Send `get_company_overview`, `get_daily_prices` and **your** `get_top_banks` as tools and ask *"Which three banks have
+the highest return on equity?"* Print the tool calls. The right result is `get_top_banks` with `metric` `roe_ttm` and
+`n` 3. If the LLM picks another tool or another metric, improve your docstring and try again: that is the skill.
 
 ```python
 ## Your code below
@@ -243,7 +258,7 @@ If the LLM picks another tool or another metric, improve your docstring and try 
 
 `response.tool_calls` is empty and the answer contains a price that looks made up. The most likely cause?
 
-- **a.** The tools were not bound, or no description matches the question
+- **a.** The tools were not sent with the question, or no description matches the question
 - **b.** The Sectors key is wrong
 - **c.** The tool returned too much data
 - **d.** The internet is slow
@@ -266,16 +281,47 @@ An RM: **"Why did BBRI fall so sharply in mid October?"** Prices say *that* it f
 > - **What carries forward:** `search_news`, which the agent uses in Modules 7–9.
 
 In Module 5 every question searched the news. As a tool, the LLM decides **when** to search, and writes the search
-words itself. The vector store is rebuilt from the saved news (the same `data/sample/` copy as in Module 5):
+words itself. The vector store is rebuilt from the saved news (the same `data/sample/` copy and the same open-source
+embedding model as in Module 5), with the Module 5 functions copied in:
 
 ```python
 import json
-from langchain_core.documents import Document
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import numpy as np
+from pydantic_ai import Embedder
 
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=os.getenv("GEMINI_API_KEY"))
+embedder = Embedder("sentence-transformers:all-mpnet-base-v2")   # open source, runs on your laptop
+
+
+def split_text(text, chunk_size=1500, chunk_overlap=100):
+    """Cut a text into pieces of chunk_size characters; each piece repeats the last chunk_overlap characters of the one before."""
+    chunks, start = [], 0
+    while True:
+        chunks.append(text[start:start + chunk_size])
+        if start + chunk_size >= len(text):
+            return chunks
+        start += chunk_size - chunk_overlap
+
+
+def split_documents(docs, chunk_size=1500, chunk_overlap=100):
+    return [{"text": piece, "metadata": doc["metadata"]}
+            for doc in docs for piece in split_text(doc["text"], chunk_size, chunk_overlap)]
+
+
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
+async def build_vector_store(chunks):
+    vectors = (await embedder.embed_documents([c["text"] for c in chunks])).embeddings
+    return {"chunks": chunks, "vectors": np.array(vectors)}
+
+
+async def similarity_search(vector_store, query, k=4, filter=None):
+    query_vector = (await embedder.embed_query(query))[0]
+    scored = [(cosine_similarity(query_vector, v), c) for v, c in zip(vector_store["vectors"], vector_store["chunks"])]
+    scored = [(s, c) for s, c in scored if filter is None or filter(c)]
+    return [c for s, c in sorted(scored, key=lambda pair: pair[0], reverse=True)[:k]]
+
 
 docs, seen = [], set()
 for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
@@ -283,33 +329,36 @@ for ticker in ["BBCA", "BBRI", "BMRI", "NISP"]:
         for article in json.load(f):
             if article["title"] not in seen:
                 seen.add(article["title"])
-                docs.append(Document(page_content=article["title"] + "\n\n" + article["body"],
-                                     metadata={"title": article["title"], "date": article["timestamp"][:10], "ticker": ticker}))
+                docs.append({"text": article["title"] + "\n\n" + article["body"],
+                             "metadata": {"title": article["title"], "date": article["timestamp"][:10], "ticker": ticker}})
 
-chunks = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100).split_documents(docs)
-vector_store = InMemoryVectorStore.from_documents(chunks, embeddings)
+chunks = split_documents(docs)
+vector_store = await build_vector_store(chunks)
 
 
-@tool
-def search_news(query: str) -> str:
-    """Search recent Indonesian market news. Use it to find WHY something happened
-    (events, announcements, reasons). It does not give prices: use the price tools for numbers.
+async def search_news(query: str) -> str:
+    """Search recent Indonesian market news. Use it for every question that asks WHY something happened
+    (events, announcements, reasons): the reason is in the news, not in the prices. It does not give prices.
+
     Args:
         query: what to look for, in plain words.
     """
-    results = vector_store.similarity_search(query, k=4)
-    return "\n\n".join(f"{d.metadata['title']} ({d.metadata['date']})\n{d.page_content}" for d in results)
+    results = await similarity_search(vector_store, query, k=4)
+    return "\n\n".join(f"{c['metadata']['title']} ({c['metadata']['date']})\n{c['text']}" for c in results)
 
 
 print(len(chunks), "chunks")
-print(llm.bind_tools([get_company_overview, get_daily_prices, search_news]).invoke(
-    "Why did BBRI shares fall so sharply in mid-October 2026?").tool_calls)
+params_news = ModelRequestParameters(
+    function_tools=[Tool(f).tool_def for f in [get_company_overview, get_daily_prices, search_news]])
+question = "Why did BBRI shares fall so sharply in mid-October 2026?"
+response = await model_request(model, [ModelRequest.user_text_prompt(question)], model_request_parameters=params_news)
+print(response.tool_calls)
 ```
 
 ### Your turn: Let the LLM narrow the search
 
 Write `search_bank_news(query: str, ticker: str = "")`: the same search, but when `ticker` is given it keeps only
-chunks of that bank (the metadata filter from Module 5). Say in the docstring when to fill `ticker`. Bind it with
+chunks of that bank (the metadata filter from Module 5). Say in the docstring when to fill `ticker`. Send it with
 `get_daily_prices` and ask *"Why did BBRI shares fall so sharply in mid-October 2026?"* The right result is a call to
 `search_bank_news` with `ticker` `BBRI` and a query about the fall (often together with a `get_daily_prices` call).
 
@@ -319,7 +368,7 @@ chunks of that bank (the metadata filter from Module 5). Say in the docstring wh
 
 ### Knowledge check: When to search
 
-With both the price tools and `search_news` bound, which question should lead to `search_news`?
+With both the price tools and `search_news` offered, which question should lead to `search_news`?
 
 - **a.** How did NISP close yesterday?
 - **b.** Which bank has the highest ROE?
@@ -375,14 +424,14 @@ Answer this in the notebook; the check cell tells you if you are right.
 
 | Idea | In code |
 |---|---|
-| A tool = function + description | `@tool`, docstring, typed arguments |
-| The LLM only asks | `llm.bind_tools(tools)` → `response.tool_calls` |
-| Our code runs it | `tool.invoke(call["args"])` → `ToolMessage(..., tool_call_id=call["id"])` |
+| A tool = function + description | plain function, docstring, typed arguments; `Tool(f).tool_def` |
+| The LLM only asks | `ModelRequestParameters(function_tools=...)` → `response.tool_calls` |
+| Our code runs it | `tool.function(**call.args_as_dict())` → `ToolReturnPart(..., tool_call_id=call.tool_call_id)` |
 | The description decides | when to use it, what it returns, allowed values |
 | Few tools, read vs action | 3–5 tools; actions need approval |
 
 **Next:** `day2/examples/m6_example.py`, then the exercise `day2/exercises/m6_exercise.py`: two new Sectors tools and
-the round trip as a function. In Module 7 `create_agent` runs this loop for us, as many rounds as needed.
+the round trip as a function. In Module 7 a Pydantic AI `Agent` runs this loop for us, as many rounds as needed.
 
 ## Open it locally
 

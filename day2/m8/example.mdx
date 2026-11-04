@@ -7,7 +7,7 @@ icon: "play"
 
 
 Connects to the Sectors MCP server (our code is the MCP client), lists its tools,
-keeps three of them, and gives them to an agent made with create_agent.
+keeps three of them, and gives them to a Pydantic AI agent.
 
 ## Run it
 
@@ -34,7 +34,7 @@ Module 8 example: an agent with tools from the Sectors MCP server.
 
 What it does:
     Connects to the Sectors MCP server (our code is the MCP client), lists its tools,
-    keeps three of them, and gives them to an agent made with create_agent.
+    keeps three of them, and gives them to a Pydantic AI agent.
 
 How to run (from the project root; about 4 model calls):
     python day2/examples/m8_example.py
@@ -50,17 +50,17 @@ import os
 import asyncio
 from datetime import date
 from dotenv import load_dotenv
-from langchain.mcp import MCPAdapter
-from langchain.agents import create_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
-from fastmcp import Client
-from fastmcp.client.transports import StreamableHttpTransport
+from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.messages import ToolCallPart
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 load_dotenv()
 
-llm = ChatGoogleGenerativeAI(
-    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
-    api_key=os.getenv("GEMINI_API_KEY"),
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
 )
 
 SELECTED = ["fetch-company-report", "fetch-daily-price", "fetch-companies-top-changes"]
@@ -77,22 +77,22 @@ QUESTIONS = [
 
 
 async def main():
-    transport = StreamableHttpTransport(
-        url=os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
+    sectors = MCPToolset(
+        os.getenv("SECTORS_MCP_URL", "https://sectors-mcp.supertype.ai/mcp"),
         headers={"Authorization": os.getenv("SECTORS_API_KEY")},
     )
 
-    async with MCPAdapter(Client(transport)) as sector:
-        tools = await sector.list_tools()
-        mcp_tools = [t for t in tools if t.name in SELECTED]
-        print(f"🔌 Sectors MCP server: {len(tools)} tools, using {len(mcp_tools)}")
+    async with sectors:
+        tools = await sectors.list_tools()
+        mcp_tools = sectors.filtered(lambda ctx, tool_def: tool_def.name in SELECTED)
+        print(f"🔌 Sectors MCP server: {len(tools)} tools, using {len(SELECTED)}")
 
-        agent = create_agent(model=llm, tools=mcp_tools, system_prompt=SYSTEM_PROMPT)
+        agent = Agent(model, toolsets=[mcp_tools], instructions=SYSTEM_PROMPT)
 
         for question in QUESTIONS:
-            result = await agent.ainvoke({"messages": [{"role": "user", "content": question}]})
-            used = [c["name"] for m in result["messages"] if type(m).__name__ == "AIMessage" for c in m.tool_calls]
-            print(f"\n❓ {question}\n🔧 Tools used: {used}\n💬 {result['messages'][-1].text}")
+            result = await agent.run(question)
+            used = [p.tool_name for m in result.all_messages() for p in m.parts if isinstance(p, ToolCallPart)]
+            print(f"\n❓ {question}\n🔧 Tools used: {used}\n💬 {result.output}")
 
 
 if __name__ == "__main__":

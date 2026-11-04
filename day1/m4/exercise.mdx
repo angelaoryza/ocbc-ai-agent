@@ -14,7 +14,7 @@ From the top of the file:
 Module 4 Exercise: put the report in the prompt and get a digest back.
 
 Write three things:
-    1. build_prompt(report)    the messages: rules (system) + report (human)
+    1. build_prompt(report)    the prompt: the report between tags + the task
     2. write_digest(report)    one call to the LLM, returns the text
     3. BankDigest              a Pydantic model, used for structured output
 
@@ -43,9 +43,9 @@ if __name__ == "__main__":
     with open(f"output/reports/report_{date.today()}.md", encoding="utf-8") as f:
         report = f.read()
 
-    messages = build_prompt(report)
-    assert messages and messages[0] == ("system", SYSTEM_PROMPT), "The first message is the system prompt"
-    assert "<report>" in messages[1][1] and report in messages[1][1], "Put the report between <report> tags"
+    prompt = build_prompt(report)
+    assert isinstance(prompt, str), "build_prompt should return the prompt as a string"
+    assert "<report>" in prompt and report in prompt, "Put the report between <report> tags"
     print("✅ build_prompt")
 
     digest = write_digest(report)
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     print("✅ write_digest:", digest[:120].replace("\n", " "), "...")
 
     assert set(BankDigest.model_fields) == {"ticker", "last_close", "trend", "summary"}, "BankDigest fields"
-    result = llm.with_structured_output(MorningDigest).invoke(messages)
+    result = digest_agent.run_sync(prompt, output_type=MorningDigest).output
     assert result.banks and all(b.trend in ("up", "down", "flat") for b in result.banks)
     print("✅ BankDigest:", [(b.ticker, b.trend) for b in result.banks])
 
@@ -69,29 +69,33 @@ import os
 from datetime import date
 from typing import Literal
 from pydantic import BaseModel, Field
-from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
 from dotenv import load_dotenv
 
 load_dotenv()
 
-llm = ChatGoogleGenerativeAI(
-    model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
-    api_key=os.getenv("GEMINI_API_KEY"),
+model = OpenAIResponsesModel(
+    os.getenv("OPENAI_MODEL", "gpt-6.1-sol"),
+    provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_URL")),
 )
 
 SYSTEM_PROMPT = """You write a short morning digest of Indonesian bank stocks for relationship managers.
 Use only the facts in the report. Quote numbers exactly, with their dates.
 Never give buy, sell or hold advice, price targets or predictions."""
 
+digest_agent = Agent(model, instructions=SYSTEM_PROMPT)  # the rules live in the agent
+
 
 def build_prompt(report):
-    """Return [("system", SYSTEM_PROMPT), ("human", <the report between <report> tags + the task>)]."""
+    """Return the prompt: the report between <report> tags, then the task."""
     pass  # TODO
 
 
 def write_digest(report):
-    """Call the LLM with build_prompt(report) and return the reply text."""
-    # Use llm.invoke(...) and read the text with .text
+    """Run digest_agent with build_prompt(report) and return the reply text."""
+    # Use digest_agent.run_sync(...) and read the text with .output
     pass  # TODO
 
 

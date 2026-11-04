@@ -20,7 +20,7 @@ Over Day 1 and Day 2, participants write every layer of the system themselves, w
 3.  **Module 3, Automation:** reusable functions, a combined daily report, scheduling, and runs that survive failures.
 4.  **Module 4, First LLM Call:** the report goes into the prompt; a digest and structured output come back.
 5.  **Module 5, RAG:** questions answered from the news saved in Module 2.
-6.  **Day 2 (Modules 6 to 9):** tools, an agent built with `create_agent`, MCP, and a scheduled agent.
+6.  **Day 2 (Modules 6 to 9):** tools, an agent built with Pydantic AI’s `Agent`, MCP, and a scheduled agent.
 
 The two days follow one idea, the **control ladder**: who decides which data the model sees, and when.
 
@@ -39,7 +39,7 @@ By the end of Day 1, participants are able to:
 - Pull company, market and news data from the Sectors API, one public web page and SQLite, and handle timeouts, rate limits, wrong keys, missing tickers, missing fields and unavailable sources
 - Save retrieved data as JSON, CSV, Markdown, TXT and SQLite, and structure it as a reusable module
 - Combine company overview and trading data into one report, schedule it with APScheduler, and keep a failed ticker from stopping the run
-- Call an LLM from Python with LangChain, put a report in the prompt, and get validated structured output with Pydantic
+- Call an LLM from Python with Pydantic AI, put a report in the prompt, and get validated structured output with Pydantic
 - Build a RAG pipeline (split, embed, store, retrieve, prompt) over saved news, with citations and a keyword fallback
 
 ## Course data and tools
@@ -53,8 +53,8 @@ By the end of Day 1, participants are able to:
 | Language and editor | Python 3.11+, VS Code with Jupyter, GitHub Copilot (an aid for exercises; off for knowledge checks) |
 | Data | `requests`, `beautifulsoup4`, `sqlite3`, `pandas` |
 | Scheduling | `APScheduler` 3.x |
-| LLM | Gemini, through `langchain-google-genai` (`ChatGoogleGenerativeAI`) |
-| RAG | `langchain-text-splitters`, Gemini embeddings (`GoogleGenerativeAIEmbeddings`), `InMemoryVectorStore` |
+| LLM | An OpenAI model, through Pydantic AI (`Agent`, `OpenAIResponsesModel`) |
+| RAG | An open-source embedding model (`all-mpnet-base-v2`, through Pydantic AI’s `Embedder` and sentence-transformers), running on the laptop; a small splitter and an in-memory vector store written in the notebook |
 
 | Folder | Holds |
 |----|----|
