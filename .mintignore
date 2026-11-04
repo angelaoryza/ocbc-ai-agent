@@ -5,3 +5,9 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Day 3 and Day 4 are drafts: kept in the repo, left out of the published site.
+day3/
+day4/
+images/day3/
+images/day4/
