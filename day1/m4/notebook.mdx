@@ -104,8 +104,8 @@ Your manager: **"What does a call cost, and can the RM ask a follow-up question?
 > **In this section**
 >
 > - **Key question:** What do we read from the reply, and how does the model 'remember'?
-> - **How we run it:** **Live, about 6 minutes.**
-> - **What you will do:** read the text and the token use, see that a second call remembers nothing, and pass the history yourself.
+> - **How we run it:** **Live, about 8 minutes.**
+> - **What you will do:** read the text and the token use, see that a second call remembers nothing, pass the history yourself, and see what `temperature` does.
 > - **What carries forward:** the habit of sending everything the model needs in every call.
 
 Read the reply with **`result.output`**. `result.usage` shows the **tokens**, which is what you pay for.
@@ -143,6 +143,33 @@ the digest?" without sending anything else. What happens?
 - **d.** The model provider caches the digest for an hour
 
 Answer this in the notebook; the check cell tells you if you are right.
+
+**Temperature: how much the answer varies**
+
+The model builds a reply one word-piece (token) at a time, each time choosing among likely next tokens.
+**`temperature`** controls that choice, and we set it in `model_settings`, on the agent or on a single `run`:
+
+| Temperature | Behaviour | Use it for |
+|---|---|---|
+| **Low (0 – 0.3)** | Almost always picks the most likely token: focused, repeatable | Digests, extraction, anything quoting numbers |
+| **High (0.8 – 1.5)** | Picks less likely tokens more often: varied, more creative, more mistakes | Brainstorming, wording options, tone |
+
+Low is not a guarantee of identical output, only *more* repeatable. Our digest quotes exact numbers, so we keep it low.
+Some models (for example reasoning models) ignore or reject `temperature`; if you get an error, remove the setting.
+
+The same question, three times at each setting:
+
+```python
+import asyncio
+
+question = "Suggest a name for our morning digest of Indonesian bank stocks. Answer with the name only."
+for temp in (0.0, 1.2):
+    runs = await asyncio.gather(*[Agent(model).run(question, model_settings={"temperature": temp}) for _ in range(3)])
+    print(f"temperature={temp}:", [r.output for r in runs])
+```
+
+At `0.0` the three names should be the same (or nearly); at `1.2` they usually differ. In this course we keep the
+temperature low for anything that quotes our data, and raise it only when we *want* variety.
 
 ## 4.3 The report in the prompt
 
