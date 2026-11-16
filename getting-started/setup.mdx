@@ -1,91 +1,49 @@
 ---
 title: "Setup"
-description: "Install Python and the course packages, add your keys to .env, and check that everything works."
+description: "What to have on your laptop, and where the keys go."
 icon: "gear"
 ---
 
+You do not write code in this course, so setup is short: an AI coding agent, a project folder, a few keys, and two tools that are used from Day 3.
+
+## Get the training files
+
+The training files are the starter kit: the project you open in OpenCode on Day 1, with the data it needs. Get them from either place:
+
+- Google Drive: [bit.ly/OCBCTrainingDrive](https://bit.ly/OCBCTrainingDrive)
+- GitHub: [angelaoryza/starter-kit](https://github.com/angelaoryza/starter-kit)
+
 ## What you need
 
-- Python 3.11 or newer
-- VS Code with the Python and Jupyter extensions
-- GitHub Copilot
+| Tool | What it is for | When you need it |
+|----|----|----|
+| **OpenCode** | The AI coding agent you talk to all day. A model must be connected and answer in the chat. | Day 1, Session 0 |
+| **The starter kit folder** | The project you work in. It is a Git repository, which is why undo works. | Day 1, Session 0 |
+| **Git** | Lets OpenCode download the Superpowers plugin from GitHub. | Before Day 1, Session 2.7 |
+| **Python 3.10 or newer** | Runs the back end. | From Day 1 |
+| **Node.js and npm** | Run JavaScript outside the browser, and install the page's packages. Vite comes with the project. | Day 3 |
+| **Your server login** | Details of your own server, from your trainer. | Day 4 |
 
-## Set up the course folder
+## Add the skills
 
-<Steps>
-  <Step title="Get the course folder">
-    Download or clone the course materials from GitHub: [angelaoryza/ai-agent-system](https://github.com/angelaoryza/ai-agent-system).
+In Session 2 you use skills by name. [Day 1, Appendix A](/day1/appendix-a) shows how to add Superpowers to OpenCode. Do it once, before Session 2.7.
 
-    ```bash
-    git clone https://github.com/angelaoryza/ai-agent-system.git
-    cd ai-agent-system
-    ```
-  </Step>
-  <Step title="Create a virtual environment and install the packages">
-    In the course folder:
+## Add your keys to `.env`
 
-    ```bash
-    python -m venv .venv
-    # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
+The app reads its keys from a private file called `.env`. Put each key on its own line, with no quotes, no spaces around `=` and no word Bearer. After you change a key, stop the back end with `ctrl+c` and start it again.
 
-    `requirements.txt` pins exact versions, tested together with Python 3.12.9 (Python 3.11 or newer is supported).
-  </Step>
-  <Step title="Add your keys to .env">
-    Copy `.env.example` to `.env` and fill in `SECTORS_API_KEY`, `OPENAI_API_KEY` and `OPENAI_URL`.
-
-    For Module 7.5 (optional): `MAGIC_API_KEY`, `MY_EMAIL`, and `credentials.json` from the trainer in this folder.
-  </Step>
-  <Step title="Run the setup check">
-    ```bash
-    python check_setup.py
-    ```
-
-    Every line should say ✅ PASS. The first run downloads the embedding model (about 420 MB, once); do it before class, on a network that can reach huggingface.co.
-  </Step>
-  <Step title="Choose the notebook kernel">
-    In VS Code, open a notebook and choose the `.venv` interpreter as the kernel.
-  </Step>
-</Steps>
-
-Run every script from the course folder, for example `python day1/examples/m2_example.py`.
-
-## The variables in `.env`
-
-| Variable | What it is |
-|---|---|
-| `SECTORS_API_KEY` | Your Sectors key ([sectors.app/api](https://sectors.app/api)). The raw key: no `Bearer` prefix. |
-| `SECTORS_BASE_URL` | The Sectors REST API address. Keep the value from `.env.example`. |
-| `SECTORS_MCP_URL` | The Sectors MCP server address. Keep the value from `.env.example`. |
-| `OPENAI_API_KEY` | Your OpenAI model key. Your trainer gives you the key. |
-| `OPENAI_URL` | The OpenAI-compatible endpoint address. Your trainer gives you the URL. |
-| `OPENAI_MODEL` | The OpenAI model the notebooks and scripts use. Keep the value from `.env.example`. |
-| `PYDANTIC_AI_NO_BANNER` | Hides Pydantic AI's start-up banner in notebooks and scripts. Keep the value from `.env.example`. |
-| `MAGIC_API_KEY` | Optional, Module 7.5: image generation ([magichour.ai](https://magichour.ai)). |
-| `MY_EMAIL` | Optional, Module 7.5: your e-mail for the Gmail test. |
-| `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` | Only if the OCBC network needs them. Ask IT. If huggingface.co is blocked, ask IT to allow it once: Module 5 downloads the open-source embedding model from there. |
+| Variable | What it is | First used |
+|----|----|----|
+| `SECTORS_API_KEY` | Your Sectors key ([sectors.app/api](https://sectors.app/api)) | Day 1, Session 3 |
+| `OPENAI_API_KEY` | The AI key your trainer gives you | Day 1, Session 5 |
+| `OPENAI_URL` | The AI address your trainer gives you | Day 1, Session 5 |
+| `OPENAI_MODEL` | The AI model name your trainer gives you | Day 1, Session 5 |
+| `SECTORS_MCP_URL` | The Sectors MCP server address | Day 2, Session 0 |
 
 <Warning>
-Never commit or share `.env`. Keys live in `.env` only: never in code, notebooks, prompts, logs or chat messages.
+Never paste a key into the chat. Keys live in `.env` only, and the browser must never load them.
 </Warning>
 
-Gmail also needs `credentials.json` in the course folder, from your trainer. Your first Gmail run saves `token.json`, which stays on your laptop.
+## Day 3 and Day 4
 
-## What `check_setup.py` checks
-
-It checks the Python version, the packages, the keys in `.env` (without printing them), the Sectors API, the OpenAI model, the open-source embedding model and the Sectors MCP server, and (optional) what the Module 7.5 tools need. It uses 1 model call and 1 Sectors credit. The first run downloads the embedding model (about 420 MB).
-
-| Check | Passes when |
-|---|---|
-| Python 3.11 or newer | Your Python version is 3.11 or newer |
-| Packages from `requirements.txt` | All course packages import |
-| `.env` file in this folder | `.env` exists in the course folder |
-| `SECTORS_API_KEY` is set, `OPENAI_API_KEY` is set, `OPENAI_URL` is set | Each value is filled in |
-| Sectors REST API | A request for NISP's company report succeeds |
-| OpenAI model | One model call answers |
-| Embedding model | The open-source embedding model (`all-mpnet-base-v2`) loads and embeds one text |
-| Sectors MCP server | The server lists its tools |
-| Optional: `MAGIC_API_KEY`, `MY_EMAIL`, `credentials.json` | Shown as ✅ PASS or ⚠️ MISSING; without one, only that tool is skipped |
-
-If some checks fail, fix them, or send the output to the trainer.
+[Day 3, Appendix A](/day3/appendix-a) explains Node.js, npm and Vite, the two terminal windows React needs, and what to do when an office network blocks npm. [Day 4, Appendix A](/day4/appendix-a) holds the server checklist and command names.

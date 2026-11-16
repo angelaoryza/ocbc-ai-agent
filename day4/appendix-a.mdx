@@ -1,0 +1,68 @@
+---
+title: "Appendix A: Server checklist and command names"
+description: "Server checklist and command names"
+sidebarTitle: "Appendix A: Server checklist and command names"
+---
+
+You do not type these commands: OpenCode runs them and you read them first. Most command names are shortened phrases, and once you know the long form the name explains itself.
+
+## A.1 The deployment in ten checks
+
+| Step | Done when |
+|----|----|
+| **1 Key login** | You log in with `ssh` and no password; the Python version is 3.10 or newer |
+| **2 Build** | `dist/` exists on your laptop |
+| **3 Copy** | Page, back end, scheduler, data and `.env` are in `/opt/idx-assistant`; no `node_modules` |
+| **4 Private keys** | `.env` has permissions `-rw-------` and is not in Git |
+| **5 Environment** | The private Python environment is installed from `requirements-server.txt` |
+| **6 Services** | Back end and scheduler are `active (running)` and restart by themselves |
+| **7 Web server** | `nginx -t` says `syntax is ok`; port 80 is open |
+| **8 Open** | `http://<server-ip>` shows the React page and answers the NISP question |
+| **9 Logs** | `logs/app.log` and the journal show your questions |
+| **10 Test sheet** | The whole sheet passes against the server address |
+
+## A.2 Command names
+
+| Command | Long form | What it does |
+|----|----|----|
+| `ssh` | Secure Shell | Opens an encrypted command line on another computer |
+| `scp -r` | Secure Copy, recursive | Copies a folder and everything in it over SSH |
+| `mkdir -p` | Make directory | Creates a folder, and missing parent folders |
+| `apt` | Advanced Package Tool | Installs software on Ubuntu and Debian |
+| `venv`**,** `pip` | Virtual environment, Pip Installs Packages | A private folder of Python packages, and the installer |
+| `chown -R`**,** `chmod 600` | Change owner, change mode | Gives files to a user; only the owner may read and write |
+| `systemctl` | System control | Starts, stops and checks systemd services |
+| `nginx -t` | Test | Checks the nginx file; nginx is pronounced "engine x" |
+| `ufw` | Uncomplicated Firewall | Controls which ports accept traffic |
+| `grep` | Global regular expression print | Prints the lines that match a pattern; `-c` counts them, `-A 5` adds 5 lines after each match |
+| `tail -n 20`**,** `tail -f` | Tail | The last 20 lines of a file; `-f` follows new lines as they arrive |
+| `journalctl -u` | Journal control, unit | Reads the systemd journal for one service |
+| `Select-String` | Select string | The PowerShell version of grep, for a Windows laptop |
+
+Searching beats scrolling once a log grows. These are the common searches, on the server and in PowerShell on a Windows laptop:
+
+| To find | Server command | Laptop command |
+|----|----|----|
+| **Failed requests** | `grep " -> 500 " logs/app.log` | `Select-String " -> 500 " logs\app.log` |
+| **Error details** | `grep -A 5 ERROR logs/app.log` | `Select-String "ERROR" logs\app.log -Context 0,5` |
+| **Slow requests (10 s or more)** | `grep -E "in [0-9]{5,} ms" logs/app.log` | `Select-String "in \d{5,} ms" logs\app.log` |
+| **Number of questions** | `grep -c "POST /api/chat" logs/app.log` | `(Select-String "POST /api/chat" logs\app.log).Count` |
+
+## A.3 When something goes wrong
+
+| Symptom | Cause and fix |
+|----|----|
+| **The browser cannot open** `http://<server-ip>` | The firewall blocks port 80, or nginx is stopped: check `ufw status` and the nginx service |
+| **The page loads but shows 502** | nginx cannot reach the back end: check the back end service |
+| **The page loads but shows 500** | The back end failed: read the journal; a wrong key is the usual cause |
+| **A service shows** `failed` **with Permission denied** | The files belong to root: give the folder to `www-data` |
+| **The page shows the old version** | The browser cached it: press Ctrl+F5 |
+| `apt` **or** `pip` **times out** | The server has no route to the internet: ask your hosting provider |
+
+## A.4 Updating after a change
+
+| Change | What happens, in plain words |
+|----|----|
+| **The page** | Build it again, copy `dist/` to the server, press Ctrl+F5 in the browser |
+| **The back end** | Copy the back end, give it to `www-data`, restart the service |
+| **The keys in** `.env` | Copy `.env`, make it private, restart both services |

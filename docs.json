@@ -35,10 +35,7 @@
             "pages": [
               "index",
               "getting-started/setup",
-              "getting-started/pre-course-checklist",
-              "getting-started/course-data",
-              "getting-started/folder-map",
-              "getting-started/syllabus-coverage"
+              "getting-started/pre-course-checklist"
             ]
           }
         ]
@@ -53,50 +50,24 @@
             ]
           },
           {
-            "group": "Module 1: AI systems overview",
-            "icon": "sitemap",
+            "group": "Sessions",
+            "icon": "list",
             "pages": [
-              "day1/m1/concepts"
+              "day1/s0",
+              "day1/s1",
+              "day1/s2",
+              "day1/s3",
+              "day1/s4",
+              "day1/s5",
+              "day1/s6"
             ]
           },
           {
-            "group": "Module 2: Data layer",
-            "icon": "database",
+            "group": "Appendices",
+            "icon": "book",
             "pages": [
-              "day1/m2/concepts",
-              "day1/m2/notebook",
-              "day1/m2/example",
-              "day1/m2/exercise"
-            ]
-          },
-          {
-            "group": "Module 3: Automation",
-            "icon": "clock",
-            "pages": [
-              "day1/m3/concepts",
-              "day1/m3/notebook",
-              "day1/m3/example",
-              "day1/m3/exercise"
-            ]
-          },
-          {
-            "group": "Module 4: First LLM call",
-            "icon": "message",
-            "pages": [
-              "day1/m4/concepts",
-              "day1/m4/notebook",
-              "day1/m4/example",
-              "day1/m4/exercise"
-            ]
-          },
-          {
-            "group": "Module 5: RAG",
-            "icon": "magnifying-glass",
-            "pages": [
-              "day1/m5/concepts",
-              "day1/m5/notebook",
-              "day1/m5/example",
-              "day1/m5/exercise"
+              "day1/appendix-a",
+              "day1/glossary"
             ]
           }
         ]
@@ -111,42 +82,88 @@
             ]
           },
           {
-            "group": "Module 6: Tools",
-            "icon": "wrench",
+            "group": "Sessions",
+            "icon": "list",
             "pages": [
-              "day2/m6/concepts",
-              "day2/m6/notebook",
-              "day2/m6/example",
-              "day2/m6/exercise"
+              "day2/s0",
+              "day2/s1",
+              "day2/s2",
+              "day2/s3",
+              "day2/s4",
+              "day2/s5",
+              "day2/s6"
             ]
           },
           {
-            "group": "Module 7: Agent",
-            "icon": "robot",
+            "group": "Appendices",
+            "icon": "book",
             "pages": [
-              "day2/m7/concepts",
-              "day2/m7/notebook",
-              "day2/m7/example",
-              "day2/m7/exercise"
+              "day2/appendix-a",
+              "day2/glossary"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Day 3",
+        "groups": [
+          {
+            "group": "Day 3",
+            "pages": [
+              "day3/overview"
             ]
           },
           {
-            "group": "Module 8: MCP",
-            "icon": "plug",
+            "group": "Sessions",
+            "icon": "list",
             "pages": [
-              "day2/m8/concepts",
-              "day2/m8/notebook",
-              "day2/m8/example",
-              "day2/m8/exercise"
+              "day3/s0",
+              "day3/s1",
+              "day3/s2",
+              "day3/s3",
+              "day3/s4",
+              "day3/s5",
+              "day3/s6"
             ]
           },
           {
-            "group": "Module 9: Integration",
-            "icon": "bell",
+            "group": "Appendices",
+            "icon": "book",
             "pages": [
-              "day2/m9/concepts",
-              "day2/m9/example",
-              "day2/m9/exercise"
+              "day3/appendix-a",
+              "day3/glossary"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Day 4",
+        "groups": [
+          {
+            "group": "Day 4",
+            "pages": [
+              "day4/overview"
+            ]
+          },
+          {
+            "group": "Sessions",
+            "icon": "list",
+            "pages": [
+              "day4/s0",
+              "day4/s1",
+              "day4/s2",
+              "day4/s3",
+              "day4/s4",
+              "day4/s5",
+              "day4/s6"
+            ]
+          },
+          {
+            "group": "Appendices",
+            "icon": "book",
+            "pages": [
+              "day4/appendix-a",
+              "day4/glossary"
             ]
           }
         ]
@@ -157,7 +174,7 @@
     "links": [
       {
         "label": "Course materials",
-        "href": "https://github.com/angelaoryza/ai-agent-system"
+        "href": "https://github.com/angelaoryza/starter-kit"
       },
       {
         "label": "Sectors",
