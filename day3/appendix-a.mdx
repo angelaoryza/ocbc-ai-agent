@@ -1,0 +1,35 @@
+---
+title: "Appendix A: Node.js, npm and Vite setup"
+description: "Node.js, npm and Vite setup"
+sidebarTitle: "Appendix A: Node.js, npm and Vite setup"
+---
+
+Do this before Session 0.3, or let OpenCode do the checks.
+
+## A.1 What you need
+
+| Tool | What it does | How to check |
+|----|----|----|
+| **Node.js** | Runs JavaScript outside the browser | Ask OpenCode to show the Node.js version |
+| **npm** | Installs the page's packages, like pip for Python | Ask OpenCode to show the npm version |
+| **Vite** | Serves the page while you work and builds the final files | Comes with the project; no separate install |
+| **Python 3.10 or newer** | Runs the FastAPI back end | Already used on Days 1 and 2 |
+
+## A.2 Two programs, two terminal windows
+
+React needs two programs at the same time: the back end (uvicorn, port 8000) and the page (Vite, port 5173). Each needs its own terminal window. OpenCode starts both when you ask. Leave both windows open. If you close one, the page shows Server error (502) or does not load.
+
+| What | Command (OpenCode runs it) | Opens at |
+|----|----|----|
+| **Back end** | `uvicorn` with `--reload`, port 8000 | `http://127.0.0.1:8000/api/health` |
+| **Page** | `npm run dev` in `frontend/` | `http://localhost:5173` |
+| **First run only** | `npm install` in `frontend/` | Downloads the page's packages |
+| **Final files** | `npm run build` in `frontend/` | Writes `dist/`: plain files that need no Node on a server |
+
+## A.3 Keys and the first start
+
+The back end reads its keys from `.env` once, when it starts. Use the raw key, with no quotes and no word Bearer, on its own line: `SECTORS_API_KEY`, `OPENAI_API_KEY`, `OPENAI_URL` and `OPENAI_MODEL`. After you change a key, stop the back end with `ctrl+c` and start it again. Never paste a key into the chat.
+
+## A.4 When npm is blocked
+
+An office network may block the npm registry. `npm install` then fails or hangs. Ask IT for the proxy settings and give them to OpenCode: "npm install fails with this error. Here is the proxy address." Never paste a password into the chat. Your trainer can also share a copy of `node_modules`.

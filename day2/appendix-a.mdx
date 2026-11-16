@@ -1,0 +1,24 @@
+---
+title: "Appendix A: Connecting an MCP server to OpenCode"
+description: "Connecting an MCP server to OpenCode"
+sidebarTitle: "Appendix A: Connecting an MCP server to OpenCode"
+---
+
+Used in Session 4.3. OpenCode reads its settings from `opencode.json`, as for Superpowers (Day 1, Appendix A), and you ask the Build agent to edit it.
+
+| Step | What you do | Check |
+|----|----|----|
+| **1. Gather** | The server address is `SECTORS_MCP_URL` and the key is `SECTORS_API_KEY`, both in `.env` | Both lines exist; the key is never typed into a chat |
+| **2. Export** | OpenCode reads environment variables, not `.env`. Your trainer shows the one command that loads `.env` in the terminal where you start OpenCode | The terminal prompt shows no key |
+| **3. Ask Build** | Use the prompt in 4.3: a remote server named sectors, the address from the variable, the key sent in the Authorization header, taken from the variable | `opencode.json` has the server and no key text |
+| **4. Restart** | Press `ctrl+x` then `q`, then start OpenCode again | Plugins and servers load at start-up |
+| **5. Ask** | Ask OpenCode how many Sectors tools it sees | 66 tools |
+
+| If you see… | Try this |
+|----|----|
+| **No Sectors tools** | Quit and restart OpenCode from the terminal where the key is loaded |
+| **An error about the key or “unauthorised”** | Check `SECTORS_API_KEY` in `.env`, then restart. Never paste the key into the chat |
+| **A timeout** | Check your connection and that the address in `SECTORS_MCP_URL` has no spaces or quotes |
+| **A reply that mentions only a few tools** | Ask again for “every tool the Sectors server offers”; the server lists 66 |
+
+**Read before you trust.** A server’s tool descriptions steer the AI like a skill does. Connect only to servers your organisation approves, and read the tool list first (4.5).

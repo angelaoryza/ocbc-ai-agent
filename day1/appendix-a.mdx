@@ -1,0 +1,55 @@
+---
+title: "Appendix A: Adding Superpowers and other skills"
+description: "Adding Superpowers and other skills"
+sidebarTitle: "Appendix A: Adding Superpowers and other skills"
+---
+
+In Session 2 you used **skills** by name. This appendix shows how to add them to OpenCode. Do it once, before Session 2.7.
+
+## A.1 Check your OpenCode version
+
+▶ **Do it:** in a terminal, type `opencode --version` and press Enter. Note the number.
+
+| Version        | Config key to use |
+|----------------|-------------------|
+| 1.x            | `plugin`          |
+| 2.0.4 or later | `plugins`         |
+
+The key name is the only difference. Use the one that matches your version.
+
+## A.2 Add Superpowers
+
+OpenCode reads its settings from a file called `opencode.json`. You do not have to edit it by hand: ask the Build agent to do it.
+
+▶ **Do it:** open OpenCode in your project folder, press `Tab` for the **Build** agent, and send (version 1.x shown):
+
+> **Add the Superpowers plugin to this project's opencode.json. Create the file if it does not exist, and keep anything already in it.**
+>
+> Under the key "plugin" add this exact entry: superpowers@git+https://github.com/obra/superpowers.git
+>
+> Do not change anything else. Tell me when it is done.
+
+On version 2.0.4 or later, change `"plugin"` to `"plugins"` in the prompt. To use Superpowers in every project, not just this one, put the entry in the global file `~/.config/opencode/opencode.jsonc` instead.
+
+▶ **Do it:** **restart** OpenCode. Press `ctrl+x` then `q` to quit, then type `opencode` in the terminal to start it again.
+
+**What to look for:** the first start can take a little longer, because OpenCode downloads the plugin from GitHub. Your computer needs Git installed for this download to work.
+
+## A.3 Check it works
+
+▶ **Do it:** press `ctrl+x` then `n` for a new chat, and send:
+
+> **Tell me about your superpowers**
+
+**What to look for:** a reply that lists Superpowers skills by name, including **brainstorming**, **writing-plans**, **executing-plans** and **test-driven-development**. If you also type "use skill tool to list skills", you should see the same names.
+
+These Superpowers skills matter most for AI-assisted coding:
+
+| Skill | What it does | Used in |
+|----|----|----|
+| **brainstorming** | Interviews you before building | 2.5, 2.7 |
+| **writing-plans** | Writes a step-by-step plan for you to approve | 2.5, 2.7 |
+| **executing-plans** | Builds the plan one step at a time | 2.6, 2.7 |
+| **test-driven-development** | Writes the check before the feature | 2.5, 2.7 |
+| **systematic-debugging** | Finds the cause of a bug before changing anything | When a test fails |
+| **verification-before-completion** | Makes the AI prove it works before saying "done" | End of every step |

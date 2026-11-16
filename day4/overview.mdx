@@ -1,71 +1,15 @@
 ---
 title: "Day 4 overview"
-description: "Finishing, testing, deploying and peer sharing: the system is tested and put on a server for others to use."
+description: "Day 4 Coursebook · Sessions 0 to 6"
 sidebarTitle: "Overview"
-icon: "map"
 ---
 
-## Background
-
-On Day 3, the agent got a web page. The page and the backend run on your laptop, so only you can open them, and they stop when the laptop sleeps. Day 4 takes the system from a first working version to a system that others use.
-
-Day 4 has four parts and a conclusion.
-
-1. **[Part 1, Finishing and Testing the System](/day4/finishing-and-testing).** Getting the system ready to show.
-2. **[Part 2, Hosting the Web App](/day4/hosting).** What hosting is and what it needs.
-3. **[Part 3, Running the System on the Server](/day4/running-on-the-server).** Putting the system on a server and confirming that it works there.
-4. **[Part 4, Sharing the System](/day4/sharing).** Presenting the prototype to peers and choosing next steps.
-5. **[Conclusion](/day4/conclusion).** A recap of the four days.
-
-<Frame caption="The IDX Market Assistant on a VPS">
-  <img src="/images/day4/assistant-on-a-vps.png" alt="The IDX Market Assistant on a VPS" />
-</Frame>
-
-**Day 4 in one line, the system is tested and put on a server for others to use.**
-
-## Training objectives
-
-By the end of Day 4, participants are able to:
-
-- Finish a system one layer at a time and check each layer before connecting it to the next
-- Test a system against sample and unexpected input, and record the results on a test sheet
-- Check an answer against the tool results it came from
-- Explain how the backend writes a log line
-- Add logging for usage, response latency, and errors
-- Read a log line, and find failed and slow requests
-- Fix an issue one layer and one change at a time
-- Explain what hosting is and what a hosted app needs
-- Compare running an app on a laptop with running it on a VPS
-- Connect to a server with SSH and copy files to it
-- Explain how a browser request travels through nginx and the backend to the agent
-- Explain what a domain is and why it is worth having
-- Explain what a managed process is and why the backend needs one
-- Keep the keys in an environment file on the server
-- Confirm that the deployed system writes its logs on the server
-- Present the use case and the prototype to peers, and name the next steps
-
-## Course data and tools
-
-**Data.** The same as Days 1 to 3. The deployed backend reaches Sectors and Gemini with the keys in the server's `.env` file.
-
-**Tools and files.**
-
-| Area | Tool |
-|----|----|
-| Testing | • A test sheet<br />• The FastAPI test page at `/docs`<br />• The page itself |
-| Logging | The Python `logging` module with `RotatingFileHandler`, and a FastAPI middleware |
-| Reading logs on the server | • `tail`<br />• `grep`<br />• `journalctl` |
-| Reading logs on a laptop | `Select-String` in PowerShell |
-| Server access | `ssh` and `scp` |
-| Process manager | systemd |
-| Web server and reverse proxy | nginx |
-| Backend | uvicorn |
-
-| Folder or file | Holds |
-|----|----|
-| `day3/starter/backend/main.py` | The logging code, in Blocks 1 and 2 |
-| `day3/starter/logs/app.log` | The log the backend writes on your laptop |
-| `day4/DEPLOYMENT.md` | The commands for every deployment step |
-| `day4/deploy/idx-assistant.service` | The systemd service file |
-| `day4/deploy/nginx-idx-assistant.conf` | The nginx configuration |
-| `day4/deploy/requirements-server.txt` | The Python packages for the server |
+| Session |
+|----|
+| [0 Opening: from your laptop to a link](/day4/s0) |
+| [1 Test against sample and unexpected input](/day4/s1) |
+| [2 Logging and fixing](/day4/s2) |
+| [3 What hosting is](/day4/s3) |
+| [4 Put it on the server](/day4/s4) |
+| [5 Prepare to share](/day4/s5) |
+| [6 Peer sharing and next steps](/day4/s6) |

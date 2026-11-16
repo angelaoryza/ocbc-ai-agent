@@ -1,56 +1,15 @@
 ---
 title: "Day 3 overview"
-description: "Building the interface and starting your own system: the agent gets a web page."
+description: "Day 3 Coursebook · Sessions 0 to 6"
 sidebarTitle: "Overview"
-icon: "map"
 ---
 
-## Background
-
-On Day 2, the agent learned to ask for the data it needs. It runs from a Python script, and using it takes three steps.
-
-- You run the script by hand.
-- You edit the question inside the file.
-- You read the answer in a terminal.
-
-Day 3 builds the Interface row of the framework table from Day 1, the place where people meet the system.
-
-<Frame caption="The IDX Market Assistant, from the browser page to the Sectors data">
-  <img src="/images/day3/browser-to-sectors.png" alt="The IDX Market Assistant, from the browser page to the Sectors data" />
-</Frame>
-
-**Day 3 in one line, the agent gets a web page.**
-
-## Training objectives
-
-By the end of Day 3, participants are able to:
-
-- Describe the three interface options and explain why this course builds a web app
-- Name the roles of HTML, CSS, and JavaScript in a web page
-- Explain what a React component and a state variable are, and read the four blocks of `App.jsx`
-- Explain why a browser page needs a doorway to the Python agent, and read a FastAPI route
-- Run the backend and the page together, and ask the agent a question from the page
-- Change the page with AI-assisted coding by describing one change at a time
-- Find an error in the data, backend, or interface layer
-- Find the log the backend writes and read one request line
-
-## Course data and tools
-
-**Data.** The same as Days 1 and 2. Public market data from Sectors reaches the page through the tools in `backend/agent.py`.
-
-**Tools and files.**
-
-| Area | Tool |
-|----|----|
-| Page | React |
-| Page tooling | Vite, which serves the page while you work and builds the final files |
-| Backend | FastAPI and uvicorn |
-| Installing packages | npm for the page and pip for the backend |
-| Coding assistant | GitHub Copilot |
-
-| Folder or file | Holds |
-|----|----|
-| `day3/starter/frontend/` | The React page. You edit `src/App.jsx` and `src/App.css` |
-| `day3/starter/backend/` | The agent in `agent.py` and the doorway in `main.py` |
-| `day3/starter/README.md` | Setup and run commands |
-| `day3/starter/requirements-web.txt` | The Python packages added for the web layer |
+| Session |
+|----|
+| [0 Opening: from one page to real parts](/day3/s0) |
+| [1 Interface options and how the page talks to the back end](/day3/s1) |
+| [2 React components and state](/day3/s2) |
+| [3 Move the rest of the app to React](/day3/s3) |
+| [4 Choose and design your own idea](/day3/s4) |
+| [5 Build your prototype](/day3/s5) |
+| [6 Debug and review](/day3/s6) |

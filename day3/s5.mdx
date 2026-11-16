@@ -1,0 +1,72 @@
+---
+title: "Session 5: Build your prototype"
+sidebarTitle: "Session 5: Build your prototype"
+---
+
+**Learning objectives.** Build the first data source with a test first and a run log, add one AI feature at the lowest rung that works, and show both in a React component with loading and error states.
+
+**Where we left off.** You have a brief, a plan and an empty project. The examples below use the Cash Runway Watcher. If you chose another idea, keep the same steps and write your own known answers first.
+
+## 5.1 Data first, with a test first
+
+Data sets the limit of the system (Day 1, Session 3). Start with the data, check it alone, and only then connect the screen.
+
+For the Cash Runway Watcher, work out the known answers by hand before you build: ending balance in Oct 2026 **Rp 3.330.000.000**; total cash out for the 12 months **Rp 9.860.000.000**; average monthly cash out about **Rp 821.700.000**; months of cover (ending balance divided by average cash out) about **4.1**; the two months with negative net flow, Jan 2026 and Apr 2026.
+
+▶ **Do it:** press `Tab` for the **Build** agent, press `ctrl+x` then `n` for a new chat, and send:
+
+> **Read prototype/AGENTS.md and docs/plan.md. Write the checks first, show me they fail, then build the data step.**
+>
+> Check 1. Months of cover is the ending balance divided by the average monthly cash out, and for the sample file it is about 4.1. Check 2. A missing or empty file gives a clear error, not a number. Check 3. The two negative months are Jan 2026 and Apr 2026.
+>
+> Front end: nothing yet.
+>
+> Back end: a route /api/runway that reads the CSV, works out the numbers in code and returns them. Write one line to logs/app.log for every request: method, path, status and milliseconds. Never log a key.
+>
+> Data: read only data/cash_flow_sample.csv, copied into the prototype. Build until the three checks pass. Change nothing else.
+
+**What to look for:** (1) all three checks pass after they failed; (2) opening `/api/runway` in the test page at `/docs` shows 3.330.000.000 as the ending balance and about 4.1 months; (3) `logs/app.log` has one line per request; (4) rename the file and call again: a clear error, and a line with the error status in the log.
+
+## 5.2 Show it in a component
+
+▶ **Do it:** send to **Build**:
+
+> **Show the runway numbers on the page, one component per piece.**
+>
+> Front end: a RunwayCard component with the ending balance, the average monthly cash out and the months of cover; a MonthsTable component with the 12 months, the two negative months marked. Show a loading state while waiting and an error state if the back end fails.
+>
+> Back end: no change.
+>
+> Data: read only /api/runway. Don't change anything else.
+
+**What to look for:** (1) the card shows Rp 3.330.000.000, about Rp 821.700.000 and about 4.1 months; (2) the table marks Jan 2026 (−Rp 30.000.000) and Apr 2026 (−Rp 60.000.000); (3) stop the back end: an error message, not a blank page.
+
+## 5.3 One AI feature, at the lowest rung that works
+
+For the Cash Runway Watcher the right rung is a grounded call (Day 1, 5.4): code computes, the model explains. If your idea needs the wiki or an agent, use the same pattern with the tool you chose in 4.2.
+
+▶ **Do it:** write the checks first. Send to **Build**:
+
+> **Before building the summary, write three checks and show me each one fail.**
+>
+> Check 1. Every number in the summary appears in the /api/runway result. Check 2. The summary never says buy, sell or hold. Check 3. If the model fails, the page still shows the numbers and says the summary is missing.
+>
+> Front end: nothing yet.
+>
+> Back end: nothing yet.
+>
+> Data: nothing yet. Don't build.
+
+▶ **Do it:** now build it. Send to **Build**:
+
+> **Add an AI summary of the runway, with a five-part prompt (ROLE, DATA, GROUNDING RULES, SAFETY RULES, OUTPUT SHAPE), the numbers inside tags, and Pydantic AI for the call.**
+>
+> Front end: a SummaryBox component under the card, with a loading state, and a note that the app gives no investment advice. If the summary fails, show "The summary is missing" and keep the numbers.
+>
+> Back end: a route /api/summary. Temperature 0.2, max_tokens 300, timeout 60 seconds, max_retries 2. The key is read only here, from .env. Save the prompt as prompts/summary.md.
+>
+> Data: the /api/runway numbers only. Build until all three checks pass. Change nothing else.
+
+**What to look for:** (1) a two-sentence summary that names months of cover of about 4.1 and mentions the two negative months, with no number that is not in the data; (2) no buy, sell or hold; (3) switch the key off in `.env` and restart: the numbers still show, with "The summary is missing"; put the key back; (4) all three checks pass; (5) the key appears in no file the browser loads.
+
+**Quick check.** Say your answer to your neighbour first, then compare: (1) Why do we write the data checks before the screen? (2) The model writes "about 5 months of cover". Which check catches it? (3) What does the page show if the AI call fails?
